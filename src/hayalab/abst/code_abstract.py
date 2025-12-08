@@ -10,7 +10,7 @@ class CodeAbstract():
 
     def __init__(self, code: str, ast: dict):
         """コンストラクタ
-        
+
         Args:
             code (str): 元のJavaScriptコード
             ast (dict): パースされたAST
