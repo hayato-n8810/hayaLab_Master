@@ -1,0 +1,48 @@
+[project]
+name = "hayalab"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "hayato-n8810", email = "s276185@wakayama-u.ac.jp" }
+]
+requires-python = ">=3.13"
+dependencies = []
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.5.0",
+    "ruff>=0.14.8",
+]
+
+[tool.ruff]
+line-length = 200
+
+[tool.ruff.format]
+docstring-code-format = true
+quote-style = "double"
+
+[tool.ruff.lint]
+select = [
+    "F", # pyflakes
+    "E", # pycodestyle
+    "W", # pycodestyle warnings
+    "I", # isort
+    "D", # pydocstyle
+    "N", # pep8-naming
+]
+ignore = [
+    "D100", # undocumented-public-module
+    "D107", # undocumented-public-init
+    "D205", # blank-line-after-summary
+    "D415", # ends-in-punctuation
+    "E501"  # Line too long
+]
+
+[tool.ruff.lint.pydocstyle]
+# docstringはgoogle style
+convention = "google"
