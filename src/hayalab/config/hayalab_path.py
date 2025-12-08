@@ -16,3 +16,4 @@ OUTPUT = ROOT / "output"
 
 # Hayalabモジュール内
 HAYALAB = ROOT / "src" / "hayalab"
+UTILS = HAYALAB / "utils"
