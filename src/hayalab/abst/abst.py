@@ -14,9 +14,9 @@ def abst(js_file_path: str) -> str:
     
     code = read_file(js_file_path)
     # Babelを使用してASTを生成
-    ast = babel_parse(code)
+    code, ast = babel_parse(code)
 
-    # 弱抽象化の実施
+    # 弱抽象化の実施（整形後のコードを使用）
     abstcode = CodeAbstract(code, ast)
     abstcode.weak_abstract_code()
 

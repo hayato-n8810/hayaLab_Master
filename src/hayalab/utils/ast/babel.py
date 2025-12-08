@@ -37,19 +37,19 @@ def code_clean(code: str) -> str:
     # 改行コードの標準化・コメント除去・フォーマッタの適応
     code = code.replace("\r\n", "\n")
     # code = self.remove_comment(code)
-    # code = prettier(code)
+    code = prettier(code)
 
     return code
 
 
-def babel_parse(code: str) -> str:
+def babel_parse(code: str) -> tuple[str, dict]:
     """Babelを使用してJavaScriptコードのASTを生成する関数
 
     Args:
         code (str): JavaScriptコード
 
     Returns:
-        str: 生成されたASTの文字列
+        tuple[str, dict]: (整形後のコード, 生成されたAST) のタプル
     """
 
     # 改行コードの標準化・コメント除去(TODO)・フォーマッタの適応
@@ -73,9 +73,9 @@ def babel_parse(code: str) -> str:
         ).stdout
 
     if len(ast_str) == 0:
-        return None
+        return None, None
     
     # json形式で読み込み
     ast = json.loads(ast_str)
 
-    return ast
+    return code, ast
