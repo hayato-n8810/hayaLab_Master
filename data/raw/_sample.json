@@ -1,0 +1,6 @@
+[
+    {
+        "slow": "var VAR_1 = Array.apply(null, Array(10000)).map(function () {\n  return Math.floor(10000 * Math.random());\n});\nfunction FUNCTION_1(VAR_2) {\n  return VAR_2\n    .filter(function (VAR_3, VAR_4, VAR_5) {\n      return VAR_2.indexOf(VAR_3) === VAR_4;\n    })\n    .sort(function (VAR_6, VAR_7) {\n      return VAR_6 - VAR_7;\n    });\n}\nFUNCTION_1(VAR_1);\n",
+        "fast": "var VAR_1 = Array.apply(null, Array(10000)).map(function () {\n  return Math.floor(10000 * Math.random());\n});\nfunction FUNCTION_1(VAR_2) {\n  return VAR_2.sort().filter(function (VAR_6, VAR_7) {\n    return VAR_6 !== VAR_2[VAR_7 + 1];\n  });\n}\nFUNCTION_1(VAR_1);\n"
+    }
+]
