@@ -1,3 +1,6 @@
+# 個人設定
+.vscode/
+
 # Python-generated files
 __pycache__/
 *.py[oc]
@@ -9,11 +12,11 @@ wheels/
 # Virtual environments
 .venv
 
-# node_modules
-node_modules/
-
 # cache files
 .ruff_cache/
+
+# node_modules
+node_modules/
 
 # data files
 data/
