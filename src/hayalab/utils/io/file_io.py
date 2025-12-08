@@ -1,5 +1,6 @@
 import json
 
+
 def read_file(file_path: str) -> str:
     """ファイルを読み込む。
 
@@ -11,7 +12,7 @@ def read_file(file_path: str) -> str:
     """
     with open(file_path, 'r', encoding='utf-8') as f:
         return f.read()
-    
+
 def write_file(file_path: str, data: str) -> None:
     """文字列をファイルとして書き込む。
 
@@ -33,7 +34,7 @@ def read_json(file_path: str) -> dict:
     """
     with open(file_path, 'r', encoding='utf-8') as f:
         return json.load(f)
-    
+
 def write_json(file_path: str, data: dict) -> None:
     """辞書をJSONファイルとして書き込む。
 

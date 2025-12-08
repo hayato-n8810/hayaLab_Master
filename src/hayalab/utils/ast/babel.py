@@ -1,7 +1,8 @@
+import json
 import subprocess
 import tempfile
+
 from ...config.hayalab_path import UTILS
-import json
 
 # def remove_comment(self, code):
 #   return self.node(["node", "comment_remover.js"], code)
@@ -51,7 +52,6 @@ def babel_parse(code: str) -> tuple[str, dict]:
     Returns:
         tuple[str, dict]: (整形後のコード, 生成されたAST) のタプル
     """
-
     # 改行コードの標準化・コメント除去(TODO)・フォーマッタの適応
     code = code_clean(code)
 
@@ -74,7 +74,7 @@ def babel_parse(code: str) -> tuple[str, dict]:
 
     if len(ast_str) == 0:
         return None, None
-    
+
     # json形式で読み込み
     ast = json.loads(ast_str)
 

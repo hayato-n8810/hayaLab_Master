@@ -1,5 +1,5 @@
-from .code_abstract import CodeAbstract
 from ..utils import *
+from .code_abstract import CodeAbstract
 
 
 def abst(js_file_path: str) -> str:
@@ -11,7 +11,6 @@ def abst(js_file_path: str) -> str:
     Returns:
         str: 抽象化後のファイル
     """
-    
     code = read_file(js_file_path)
     # Babelを使用してASTを生成
     code, ast = babel_parse(code)

@@ -3,6 +3,7 @@ import re
 import subprocess
 from dataclasses import dataclass
 
+
 @dataclass
 class CodeAbstract():
     """jsプログラム抽象化クラス（型定義）"""
