@@ -27,3 +27,13 @@ repos:
         require_serial: true
         additional_dependencies: []
         minimum_pre_commit_version: "4.5"
+      - id: ruff-import-sort
+        name: ruff-import-sort
+        description: "Run 'ruff import-sort' for extremely fast Python import sorting"
+        entry: ruff check --select I --fix
+        language: python
+        types_or: [python, pyi]
+        args: []
+        require_serial: true
+        additional_dependencies: []
+        minimum_pre_commit_version: "4.5"

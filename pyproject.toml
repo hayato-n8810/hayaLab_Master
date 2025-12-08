@@ -25,6 +25,7 @@ line-length = 200
 [tool.ruff.format]
 docstring-code-format = true
 quote-style = "double"
+exclude = ["**/__init__.py"]
 
 [tool.ruff.lint]
 select = [
@@ -35,6 +36,7 @@ select = [
     "D", # pydocstyle
     "N", # pep8-naming
 ]
+exclude = ["**/__init__.py"]
 ignore = [
     "D100", # undocumented-public-module
     "D107", # undocumented-public-init
