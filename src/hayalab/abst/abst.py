@@ -1,4 +1,5 @@
-from ..utils import *
+from hayalab.utils import *
+
 from .code_abstract import CodeAbstract
 
 

@@ -1,2 +1,2 @@
-from .io import *
+from .file import *
 from .ast import *
