@@ -7,7 +7,10 @@ authors = [
     { name = "hayato-n8810", email = "s276185@wakayama-u.ac.jp" }
 ]
 requires-python = ">=3.13"
-dependencies = []
+dependencies = [
+    "pydantic>=2.12.5",
+    "tqdm>=4.67.1",
+]
 
 [build-system]
 requires = ["hatchling"]
