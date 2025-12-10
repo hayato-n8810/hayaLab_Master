@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 
 def read_file(file_path: str) -> str:
@@ -21,6 +22,7 @@ def write_file(file_path: str, data: str) -> None:
         data (str): 書き込むデータ。
         file_path (str): 書き込むファイルのパス。
     """
+    Path(file_path).parent.mkdir(parents=True, exist_ok=True)
     with open(file_path, "w", encoding="utf-8") as f:
         f.write(data)
 
@@ -45,5 +47,6 @@ def write_json(file_path: str, data: dict) -> None:
         data (dict): 書き込むデータ。
         file_path (str): 書き込むJSONファイルのパス。
     """
+    Path(file_path).parent.mkdir(parents=True, exist_ok=True)
     with open(file_path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
