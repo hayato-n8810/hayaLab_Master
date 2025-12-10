@@ -1,0 +1,32 @@
+# バージョン管理システム関連
+.git
+.gitignore
+.pre-commit-config.yaml
+
+# Docker関連
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# キャッシュファイルなど
+**/__pycache__
+**/.ruff_cache
+**/.python-version
+**/.DS_Store
+
+# ドキュメント
+LICENSE
+
+# プロジェクト固有
+.vscode
+
+# python関連
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+.venv/
+
+# Node.js関連（ローカルの依存パッケージ）
+node_modules/

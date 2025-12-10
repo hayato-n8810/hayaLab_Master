@@ -1,0 +1,25 @@
+services:
+  hayalab:
+    build: .
+    image: hayalab
+    container_name: hayalab
+    tty: true
+    # コンテナを修了させないコマンド
+    command: tail -f /dev/null
+    ports:
+      - 4567:4567
+    volumes:
+      # マウントするローカルディレクトリ
+      - ./data:/works/data
+      - ./experiments:/works/experiments
+      - ./output:/works/output
+      - ./src:/works/src
+      # - ../repository:/repository
+
+      # コンテナ内のものを利用
+      - /works/src/hayalab.egg-info
+    working_dir: /works
+    # deploy:
+    #   resources: # CPUコア使用数制限
+    #     limits:
+    #       cpus: "1.0"
