@@ -27,7 +27,7 @@ def parallel_diff(mb_data: dict) -> dict:
         fast_ast = hayalab.gum_parse(mb_data["fast"])
 
     diff = hayalab.gum_diff(slow_ast, fast_ast)
-    return {"id": str(id), "diff": diff.model_dump() if diff else None}
+    return {"id": id, "diff": diff.model_dump() if diff else None}
 
 
 if __name__ == "__main__":
