@@ -20,7 +20,7 @@ feature_extractor = hayalab.DiffFeatureExtractor()
 
 if __name__ == "__main__":
     # ログ設定
-    logging.basicConfig(filename=f"{hayalab.OUTPUT}/MB_diff/slow_pattern_test.log", level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", force=True)
+    logging.basicConfig(filename=f"{hayalab.OUTPUT}/MB_diff/slow_feature_test.log", level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", force=True)
 
     logging.info("===== Program started =====")
 
@@ -53,15 +53,15 @@ if __name__ == "__main__":
         slow_diff_blocks = hayalab.base_diff_blocks(gumtree_diff, target_actions=TARGET_ACTIONS)
 
         # 各差分ブロックからパターンを抽出
-        mb_slow_pattern = {"id": mb_id, "pattern": []}
+        mb_slow_feature = {"id": mb_id, "feature": []}
 
-        pattern = feature_extractor.extract_features(slow_diff_blocks).to_dict()
-        mb_slow_pattern["pattern"].append(pattern)
+        feature = feature_extractor.extract_features(slow_diff_blocks).to_dict()
+        mb_slow_feature["feature"].append(feature)
 
-        results.append(mb_slow_pattern)
+        results.append(mb_slow_feature)
 
     # 結果をJSONファイルに出力
-    output_path = f"{hayalab.OUTPUT}/MB_diff/pattern_results_test.json"
+    output_path = f"{hayalab.OUTPUT}/MB_diff/feature_results_test.json"
     hayalab.write_json(output_path, results)
 
     logging.info(f"Results saved to {output_path}")

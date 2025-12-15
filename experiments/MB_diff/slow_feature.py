@@ -28,7 +28,7 @@ from hayalab.classes.gumtree import GumDiff
 feature_extractor = hayalab.DiffFeatureExtractor()
 
 
-def parallel_extract_pattern(mb_diff_data: dict) -> dict:
+def parallel_extract_feature(mb_diff_data: dict) -> dict:
     """マイクロベンチマーク差分データからパターンを抽出する並列処理関数
 
     Args:
@@ -42,7 +42,7 @@ def parallel_extract_pattern(mb_diff_data: dict) -> dict:
 
     # 差分データがない場合はスキップ
     if diff_data is None:
-        return {"id": mb_id, "pattern": None}
+        return {"id": mb_id, "feature": None}
 
     # Pydanticモデルで復元
     gumtree_diff = GumDiff.model_validate(diff_data)
@@ -53,16 +53,16 @@ def parallel_extract_pattern(mb_diff_data: dict) -> dict:
     slow_diff_block = hayalab.base_diff_blocks(gumtree_diff, target_actions=TARGET_ACTIONS)
 
     # 各差分ブロックからパターンを抽出
-    mb_slow_pattern = {"id": mb_id, "pattern": []}
-    pattern = feature_extractor.extract_features(slow_diff_block).to_dict()
-    mb_slow_pattern["pattern"].append(pattern)
+    mb_slow_feature = {"id": mb_id, "feature": []}
+    feature = feature_extractor.extract_features(slow_diff_block).to_dict()
+    mb_slow_feature["feature"].append(feature)
 
-    return mb_slow_pattern
+    return mb_slow_feature
 
 
 if __name__ == "__main__":
     # ログ設定
-    logging.basicConfig(filename=f"{hayalab.OUTPUT}/MB_diff/slow_pattern.log", level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", force=True)
+    logging.basicConfig(filename=f"{hayalab.OUTPUT}/MB_diff/slow_feature.log", level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", force=True)
 
     logging.info("===== Program started =====")
 
@@ -76,13 +76,13 @@ if __name__ == "__main__":
     # 並列処理で実行
     max_workers = 20  # 同時実行プロセス数を制限
     with ProcessPoolExecutor(max_workers=max_workers) as executor:
-        results = list(tqdm.tqdm(executor.map(parallel_extract_pattern, mb_diff_json), total=total, desc="Processing"))
+        results = list(tqdm.tqdm(executor.map(parallel_extract_feature, mb_diff_json), total=total, desc="Processing"))
 
     # パターンがNoneのものを分離
-    skipped_ids = [r["id"] for r in results if r["pattern"] is None]
+    skipped_ids = [r["id"] for r in results if r["feature"] is None]
 
     # 結果をJSONファイルに出力
-    output_path = f"{hayalab.OUTPUT}/MB_diff/slow_pattern.json"
+    output_path = f"{hayalab.OUTPUT}/MB_diff/slow_feature.json"
     results.sort(key=lambda x: x["id"])
     hayalab.write_json(output_path, results)
 
