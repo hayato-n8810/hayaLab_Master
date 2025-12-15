@@ -15,3 +15,4 @@ from .gumtree.extractors import (
     PropertyIdentifierExtractor,
     NewExpressionExtractor,
 )
+from .pattern.integrate import integrate_features
