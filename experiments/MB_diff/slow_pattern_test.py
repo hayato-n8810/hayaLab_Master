@@ -49,7 +49,7 @@ if __name__ == "__main__":
 
         # あるMBペアの低速コード（変更前）におけるすべての差分ブロックリスト
         # 対象とするアクション
-        TARGET_ACTIONS = ["delete-tree", "update-node"]
+        TARGET_ACTIONS = ["delete-node", "delete-tree", "update-node"]
         slow_diff_blocks = hayalab.base_diff_blocks(gumtree_diff, target_actions=TARGET_ACTIONS)
 
         # 各差分ブロックからパターンを抽出
