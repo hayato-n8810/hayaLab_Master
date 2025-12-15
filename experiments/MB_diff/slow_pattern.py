@@ -1,4 +1,12 @@
 """TODO
+メソッド呼び出しにおける実行順序の考慮
+現在：メソッドは文字列としての登場順
+理想：メソッドの呼び出し順
+
+例: JSON.parse(JSON.stringify(VAR_2));
+現在 - parse → stringify の登場順
+理想 - stringify → parse の実行順
+
 extract_node_feature関数において取得する特徴量
 現在は以下の特徴量を取得
 - ループ文の種類(for_statement, for_in_statement, while_statement)とその派生特徴量
@@ -42,7 +50,7 @@ def parallel_extract_pattern(mb_diff_data: dict) -> dict:
     # あるMBペアの低速コード（変更前）におけるすべての差分ブロックリスト
     # 対象とするアクション
     TARGET_ACTIONS = ["delete-node", "delete-tree", "update-node"]
-    slow_diff_block = hayalab.head_diff_blocks(gumtree_diff, target_actions=TARGET_ACTIONS)
+    slow_diff_block = hayalab.base_diff_blocks(gumtree_diff, target_actions=TARGET_ACTIONS)
 
     # 各差分ブロックからパターンを抽出
     mb_slow_pattern = {"id": mb_id, "pattern": []}
@@ -54,17 +62,12 @@ def parallel_extract_pattern(mb_diff_data: dict) -> dict:
 
 if __name__ == "__main__":
     # ログ設定
-    logging.basicConfig(
-        filename=f"{hayalab.OUTPUT}/MB_diff/slow_pattern_test.log",
-        level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(message)s",
-    )
+    logging.basicConfig(filename=f"{hayalab.OUTPUT}/MB_diff/slow_pattern.log", level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", force=True)
 
     logging.info("===== Program started =====")
 
     # AST差分データの読み込み（diff.pyで出力されたJSONファイル）
     mb_diff_json = hayalab.read_json(f"{hayalab.OUTPUT}/MB_diff/MBDiff.json")
-    mb_diff_json = mb_diff_json[0:20]
 
     total = len(mb_diff_json)
     results = []
@@ -85,7 +88,7 @@ if __name__ == "__main__":
                 results.append(result)
 
     # 結果をJSONファイルに出力
-    output_path = f"{hayalab.OUTPUT}/MB_diff/pattern_results_test_fast.json"
+    output_path = f"{hayalab.OUTPUT}/MB_diff/slow_pattern.json"
     results.sort(key=lambda x: x["id"])
     hayalab.write_json(output_path, results)
 
