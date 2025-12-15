@@ -1,6 +1,6 @@
 """差分ブロックからの特徴抽出メインモジュール"""
 
-from hayalab.classes.feature import FeatureNode, FeatureTree, NodePosition
+from hayalab.classes.feature import FeatureNode, NodePosition
 from hayalab.classes.gumtree import ASTNode
 
 from .extractors import (
@@ -44,15 +44,14 @@ class DiffFeatureExtractor:
         """
         self.extractors.append(extractor)
 
-    def extract_features(self, diff_block: dict) -> FeatureTree:
+    def extract_features(self, diff_block: list[ASTNode]) -> FeatureNode:
         """差分ブロックから階層構造を保持した特徴を抽出
 
         Args:
-            diff_block: 差分ブロックとそのアクションの辞書
-                形式: {"action": str, "diff_block": list[ASTNode]}
+            diff_block (list[ASTNode]): 差分ノードのリスト
 
         Returns:
-            FeatureTree: 特徴ツリー
+            FeatureNode: 抽出した特徴
         """
         root = FeatureNode(
             feature_type="diff_root",
@@ -61,16 +60,13 @@ class DiffFeatureExtractor:
             order=0,
         )
 
-        action = diff_block["action"]
-        block = diff_block["diff_block"]
+        if not diff_block:
+            return root
 
-        if not block:
-            return FeatureTree(action=action, root=root)
-
-        context = ExtractionContext(nodes=block)
+        context = ExtractionContext(nodes=diff_block)
         self._extract_recursive(context, root)
 
-        return FeatureTree(action=action, root=root)
+        return root
 
     def _extract_recursive(self, context: ExtractionContext, parent_feature: FeatureNode) -> None:
         """再帰的に特徴を抽出

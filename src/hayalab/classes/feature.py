@@ -50,17 +50,3 @@ class FeatureNode(BaseModel):
         if self.children:
             result["children"] = [child.to_dict() for child in self.children]
         return result
-
-
-class FeatureTree(BaseModel):
-    """特徴ツリー（差分ブロック全体の特徴）"""
-
-    action: str  # アクション名 (delete-tree, update-node, etc.)
-    root: FeatureNode  # ルートノード
-
-    def to_dict(self) -> dict:
-        """辞書形式に変換（JSON出力用）"""
-        return {
-            "action": self.action,
-            "features": self.root.to_dict() if self.root.children else {},
-        }

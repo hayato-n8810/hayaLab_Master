@@ -13,7 +13,7 @@ def cut_diff_blocks(
     ast: AST,
     actions: list[GumAction],
     target_actions: Optional[list[str]] = None,
-) -> list[dict]:
+) -> list[ASTNode]:
     """検出差分ノードブロックを元のASTから抽出
 
     Args:
@@ -23,15 +23,14 @@ def cut_diff_blocks(
             Noneの場合はすべてのアクションを対象とする
 
     Returns:
-        list[dict]: 抽出された差分のアクションとそのノードブロック
-            各要素は {"action": str, "diff_block": list[ASTNode]} の形式
+        list[ASTNode]: インデックスで昇順ソートされた差分ノードのリスト
     """
-    ast_tree = ast.tree
-    diff_blocks = []
+    origin_ast_tree = ast.tree
+    all_diff_nodes = {}  # {index: ASTNode} の辞書で重複を排除
 
     for action in actions:
         # 差分となったノード
-        action_node = ast_tree[action.index]
+        action_node = origin_ast_tree[action.index]
         action_name = action.action
         diff_begin = action_node.begin
         diff_end = action_node.end
@@ -50,21 +49,24 @@ def cut_diff_blocks(
             logging.info("")
             continue
 
-        diff_block: list[ASTNode] = []
-        diff_block.append(action_node)
+        # 差分要素をひとつのブロックにする
+        # アクションノードを追加
+        all_diff_nodes[action.index] = action_node
 
-        # 差分ノードをparentにもつ配下ノードをすべて抽出
-        for node in ast_tree[action.index :]:
-            if set(node.parent) >= action_parent:
-                diff_block.append(node)
-                # ログ
-                base_idx = base_idx + 1
-                logging.info("    " * len(set(node.parent) - action_parent) + f"  node:{base_idx} {node}")
+        # 差分がtreeの場合，差分ノードをparentにもつ配下ノードをすべて抽出
+        if action_name.endswith("-tree"):
+            for node in origin_ast_tree[action.index :]:
+                if set(node.parent) >= action_parent:
+                    # 元のASTのインデックスで登録
+                    base_idx = base_idx + 1
+                    all_diff_nodes[base_idx] = node
 
-        diff_blocks.append({"action": action.action, "diff_block": diff_block})
+                    # ログ
+                    logging.info("    " * len(set(node.parent) - action_parent) + f"  node:{base_idx} {node}")
 
     logging.info("")
-    return diff_blocks
+    # インデックスでソートして一つの差分ブロックとしてのノードのリストを返す
+    return [all_diff_nodes[idx] for idx in sorted(all_diff_nodes.keys())]
 
 
 def base_diff_blocks(
