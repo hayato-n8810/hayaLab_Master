@@ -68,24 +68,19 @@ if __name__ == "__main__":
 
     # AST差分データの読み込み（diff.pyで出力されたJSONファイル）
     mb_diff_json = hayalab.read_json(f"{hayalab.OUTPUT}/MB_diff/MBDiff.json")
+    mb_diff_json = mb_diff_json[0:20]
 
     total = len(mb_diff_json)
     results = []
     skipped_ids = []
 
     # 並列処理で実行
-    with ProcessPoolExecutor() as executor:
-        # tqdmで進捗表示
-        patterns = [executor.submit(parallel_extract_pattern, item) for item in mb_diff_json]
+    max_workers = 20  # 同時実行プロセス数を制限
+    with ProcessPoolExecutor(max_workers=max_workers) as executor:
+        results = list(tqdm.tqdm(executor.map(parallel_extract_pattern, mb_diff_json), total=total, desc="Processing"))
 
-        for future in tqdm.tqdm(patterns, total=total, desc="Processing"):
-            result = future.result()
-
-            # パターンがNoneの場合はスキップ扱い
-            if result["pattern"] is None:
-                skipped_ids.append(result["id"])
-            else:
-                results.append(result)
+    # パターンがNoneのものを分離
+    skipped_ids = [r["id"] for r in results if r["pattern"] is None]
 
     # 結果をJSONファイルに出力
     output_path = f"{hayalab.OUTPUT}/MB_diff/slow_pattern.json"
@@ -101,5 +96,6 @@ if __name__ == "__main__":
     # スキップしたIDを標準出力
     if skipped_ids:
         print(f"\nSkipped IDs (no diff data): {', '.join(skipped_ids)}")
+        logging.info(f"Skipped IDs: {', '.join(skipped_ids)}")
     print(f"\nProcessed: {len(results)}/{total}")
     print(f"Results saved to: {output_path}")
