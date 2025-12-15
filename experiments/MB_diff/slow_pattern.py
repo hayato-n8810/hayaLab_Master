@@ -68,7 +68,6 @@ if __name__ == "__main__":
 
     # AST差分データの読み込み（diff.pyで出力されたJSONファイル）
     mb_diff_json = hayalab.read_json(f"{hayalab.OUTPUT}/MB_diff/MBDiff.json")
-    mb_diff_json = mb_diff_json[0:20]
 
     total = len(mb_diff_json)
     results = []
