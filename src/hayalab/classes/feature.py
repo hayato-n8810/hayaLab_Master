@@ -28,6 +28,8 @@ class FeatureNode(BaseModel):
     value: Optional[str] = None  # 識別子名など
     children: list["FeatureNode"] = []
 
+    has_binary_expression: Optional[bool] = None  # 条件部に二項式（大小比較等）があるか
+
     # 元のASTノード情報（デバッグ・トレース用）
     original_index: Optional[int] = None
     begin: Optional[int] = None
@@ -43,6 +45,8 @@ class FeatureNode(BaseModel):
         }
         if self.value is not None:
             result["value"] = self.value
+        if self.has_binary_expression is not None:
+            result["has_binary_expression"] = self.has_binary_expression
         if self.children:
             result["children"] = [child.to_dict() for child in self.children]
         return result
