@@ -25,9 +25,6 @@ hayaLab/
 │   ├── classes/            # データクラス定義（Feature, GumTree）
 │   ├── config/             # パス設定
 │   ├── gumtree/            # GumTree関連処理
-│   │   ├── diff_block.py           # 差分ブロック抽出
-│   │   ├── feature_extractor.py    # 特徴抽出メイン
-│   │   ├── gumtree_command.py      # GumTreeコマンドラッパー
 │   │   └── extractors/             # 各構文の特徴抽出器
 │   ├── pattern/            # パターン統合
 │   └── utils/              # ユーティリティ（babelAST, ファイルIO）
