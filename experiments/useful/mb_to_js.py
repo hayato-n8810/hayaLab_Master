@@ -11,6 +11,7 @@ import hayalab
 #     if mb_pair["slow"]["has_loop"] == True or mb_pair["fast"]["has_loop"] == True:
 #         has_loop_id.append(mb_pair["id"])
 
+# 11889件
 # print(f"ループを含むMBペアの数: {len(has_loop_id)}")
 
 
