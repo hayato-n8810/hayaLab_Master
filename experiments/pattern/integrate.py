@@ -1,6 +1,6 @@
 # 実装対において，抽出した特徴が位置する実装対を統合してパターン化する
 import hayalab
-from config import PathConfig
+from hayalab.config import PathConfig
 
 config = PathConfig()
 

@@ -6,15 +6,10 @@
 import csv
 import logging
 import re
-import sys
-from pathlib import Path
 from typing import Set, Tuple
 
-# プロジェクトルートをパスに追加
-sys.path.insert(0, str(Path(__file__).parents[2]))
-
 import hayalab
-from config import PathConfig
+from hayalab.config import PathConfig
 
 
 def load_pattern_ids(json_path: str, feature_id: int) -> Set[int]:

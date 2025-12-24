@@ -61,7 +61,7 @@ def parallel_extract_feature(mb_diff_data: dict) -> dict:
 
 
 if __name__ == "__main__":
-    from config import PathConfig
+    from hayalab.config import PathConfig
 
     config = PathConfig()
 

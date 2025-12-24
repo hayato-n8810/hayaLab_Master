@@ -1,5 +1,5 @@
 import hayalab
-from config import PathConfig
+from hayalab.config import PathConfig
 
 config = PathConfig()
 

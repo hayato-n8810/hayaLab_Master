@@ -1,7 +1,7 @@
 # SIGSE向け：ループを含む実装対に絞って，特徴を統合してパターン化する
 import hayalab
-from config import PathConfig
 from hayalab import integrate_features
+from hayalab.config import PathConfig
 
 config = PathConfig()
 
