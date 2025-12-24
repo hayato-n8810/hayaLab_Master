@@ -1,3 +1,4 @@
+import csv
 import json
 from pathlib import Path
 
@@ -50,3 +51,16 @@ def write_json(file_path: str, data: dict) -> None:
     Path(file_path).parent.mkdir(parents=True, exist_ok=True)
     with open(file_path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
+
+
+def read_csv(file_path: str) -> dict:
+    """JSONファイルを読み込む。
+
+    Args:
+        file_path (str): 読み込むcsvファイルのパス。
+
+    Returns:
+        dict: csvファイルの内容を返す。
+    """
+    with open(file_path, "r", encoding="utf-8") as f:
+        return list(csv.reader(f))

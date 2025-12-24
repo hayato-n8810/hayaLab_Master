@@ -2,6 +2,7 @@
 
 from .feature import FeatureNode, NodePosition
 from .gumtree import AST, ASTNode, GumAction, GumDiff
+from .codeql import Qlcsv
 
 __all__ = [
     # Feature
@@ -12,4 +13,6 @@ __all__ = [
     "ASTNode",
     "GumAction",
     "GumDiff",
+    # codeql
+    "Qlcsv",
 ]
