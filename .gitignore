@@ -22,4 +22,4 @@ node_modules/
 data/
 
 # results files
-output/
+**output/
