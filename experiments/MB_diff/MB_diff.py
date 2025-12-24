@@ -31,7 +31,11 @@ def parallel_diff(mb_data: dict) -> dict:
 
 
 if __name__ == "__main__":
-    origin_data = hayalab.read_json(f"{hayalab.PROCESSED}/MB_separate.json")
+    from config import PathConfig
+
+    config = PathConfig()
+
+    origin_data = hayalab.read_json(f"{config.processed}/MB_separate.json")
 
     # 並列処理
     results = []
@@ -45,4 +49,4 @@ if __name__ == "__main__":
 
     # 結果を辞書形式にまとめる
     results.sort(key=lambda x: x["id"])
-    hayalab.write_json(f"{hayalab.OUTPUT}/MB_diff/MBDiff.json", results)
+    hayalab.write_json(f"{config.output}/MB_diff/MBDiff.json", results)

@@ -19,13 +19,17 @@ feature_extractor = hayalab.DiffFeatureExtractor()
 
 
 if __name__ == "__main__":
+    from config import PathConfig
+
+    config = PathConfig()
+
     # ログ設定
-    logging.basicConfig(filename=f"{hayalab.OUTPUT}/MB_diff/slow_feature_test.log", level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", force=True)
+    logging.basicConfig(filename=f"{config.output}/MB_diff/slow_feature_test.log", level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", force=True)
 
     logging.info("===== Program started =====")
 
     # AST差分データの読み込み（diff.pyで出力されたJSONファイル）
-    mb_diff_js = hayalab.read_json(f"{hayalab.OUTPUT}/MB_diff/MBDiff.json")
+    mb_diff_js = hayalab.read_json(f"{config.output}/MB_diff/MBDiff.json")
     mb_diff_json = mb_diff_js[10:15]
 
     total = len(mb_diff_json)
@@ -61,7 +65,7 @@ if __name__ == "__main__":
         results.append(mb_slow_feature)
 
     # 結果をJSONファイルに出力
-    output_path = f"{hayalab.OUTPUT}/MB_diff/feature_results_test.json"
+    output_path = f"{config.output}/MB_diff/feature_results_test.json"
     hayalab.write_json(output_path, results)
 
     logging.info(f"Results saved to {output_path}")

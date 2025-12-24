@@ -1,8 +1,11 @@
 # SIGSE向け：ループを含む実装対に絞って，特徴を統合してパターン化する
 import hayalab
+from config import PathConfig
 from hayalab import integrate_features
 
-all_data = hayalab.read_json(f"{hayalab.OUTPUT}/pattern/sigse-bachelor/MB_loop_method_all.json")
+config = PathConfig()
+
+all_data = hayalab.read_json(f"{config.output}/pattern/sigse-bachelor/MB_loop_method_all.json")
 
 has_loop_id = []
 for mb_pair in all_data:
@@ -12,7 +15,7 @@ for mb_pair in all_data:
 print(f"ループを含むMBペアの数: {len(has_loop_id)}")
 
 # データ読み込み
-feature_data = hayalab.read_json(f"{hayalab.OUTPUT}/MB_diff/slow_feature.json")
+feature_data = hayalab.read_json(f"{config.output}/MB_diff/slow_feature.json")
 
 loop_filtered_data = []
 for item in feature_data:
@@ -27,4 +30,4 @@ for i, item in enumerate(integrated):
     item["feature_id"] = i
 
 # 結果保存
-hayalab.write_json(f"{hayalab.OUTPUT}/pattern/sigse-bachelor/MB_slow_patterns.json", integrated)
+hayalab.write_json(f"{config.output}/pattern/sigse-bachelor/MB_slow_patterns.json", integrated)

@@ -3,9 +3,12 @@
 import os
 
 import hayalab
+from config import PathConfig
+
+config = PathConfig()
 
 # # SIGSEの対象（ループを含む実装対）
-# sigse_data = hayalab.read_json(f"{hayalab.OUTPUT}/pattern/sigse/MB_loop_method_all.json")
+# sigse_data = hayalab.read_json(f"{config.output}/pattern/sigse/MB_loop_method_all.json")
 # has_loop_id = []
 # for mb_pair in sigse_data:
 #     if mb_pair["slow"]["has_loop"] == True or mb_pair["fast"]["has_loop"] == True:
@@ -16,9 +19,9 @@ import hayalab
 
 
 # 入力ファイルと出力先
-mb_data = hayalab.read_json(f"{hayalab.PROCESSED}/MB_separate.json")
-output_dir_slow = f"/Users/hayato-n/projects/jsPerf/no_setup_slow"
-output_dir_fast = f"/Users/hayato-n/projects/jsPerf/no_setup_fast"
+mb_data = hayalab.read_json(f"{config.processed}/MB_separate.json")
+output_dir_slow = f"{config.root.parent}/jsPerf/no_setup_slow"
+output_dir_fast = f"{config.root.parent}/jsPerf/no_setup_fast"
 
 # 最大で何件保存するか（Noneなら全件）
 MAX_ITEMS = None

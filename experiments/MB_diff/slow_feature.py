@@ -61,13 +61,17 @@ def parallel_extract_feature(mb_diff_data: dict) -> dict:
 
 
 if __name__ == "__main__":
+    from config import PathConfig
+
+    config = PathConfig()
+
     # ログ設定
-    logging.basicConfig(filename=f"{hayalab.OUTPUT}/MB_diff/slow_feature.log", level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", force=True)
+    logging.basicConfig(filename=f"{config.output}/MB_diff/slow_feature.log", level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", force=True)
 
     logging.info("===== Program started =====")
 
     # AST差分データの読み込み（diff.pyで出力されたJSONファイル）
-    mb_diff_json = hayalab.read_json(f"{hayalab.OUTPUT}/MB_diff/MBDiff.json")
+    mb_diff_json = hayalab.read_json(f"{config.output}/MB_diff/MBDiff.json")
 
     total = len(mb_diff_json)
     results = []
@@ -82,7 +86,7 @@ if __name__ == "__main__":
     skipped_ids = [r["id"] for r in results if r["feature"] is None]
 
     # 結果をJSONファイルに出力
-    output_path = f"{hayalab.OUTPUT}/MB_diff/slow_feature.json"
+    output_path = f"{config.output}/MB_diff/slow_feature.json"
     results.sort(key=lambda x: x["id"])
     hayalab.write_json(output_path, results)
 

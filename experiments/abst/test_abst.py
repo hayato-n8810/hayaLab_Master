@@ -1,5 +1,8 @@
 import hayalab
+from config import PathConfig
 
-abst_code = hayalab.abst(f"{hayalab.EXPERIMENTS}/abst/test.js")
+config = PathConfig()
 
-hayalab.write_file(f"{hayalab.OUTPUT}/abst/test_abst.js", abst_code)
+abst_code = hayalab.abst(f"{config.experiments}/abst/test.js")
+
+hayalab.write_file(f"{config.output}/abst/test_abst.js", abst_code)
