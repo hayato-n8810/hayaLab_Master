@@ -31,6 +31,9 @@ from .pattern.integrate import integrate_features
 from .codeql.csv_parse import codeql_csv
 from .codeql.extract_code import extract_code_block 
 
+# 統計検定
+from .stest.mann_whitney import mann_whitney_test
+
 __all__ = [
     # ファイルIO
     "read_file",
@@ -61,4 +64,6 @@ __all__ = [
     # codeql関連
     "codeql_csv",
     "extract_code_block",
+    # 統計検定
+    "mann_whitney_test",
 ]
