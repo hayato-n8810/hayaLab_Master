@@ -1,42 +1,64 @@
 from pathlib import Path
 
-from hayalab.classes.codeql import Qlcsv
-from hayalab.utils.file.file_clean import code_clean, prettier
-from hayalab.utils.file.file_io import read_file
+from hayalab.classes.codeql import Sarif
 
 
-def extract_code_block(qlcsv: Qlcsv, base_path: str = "") -> str:
-    """Qlcsvオブジェクトからコードブロックを抽出する。
+def extract_code_sarif(sarif: Sarif, target_path: Path) -> str:
+    """Sarifの一つの検出結果からコードブロックを抽出し整形して返す
 
     Args:
-        qlcsv (Qlcsv): CodeQLの実行結果を表すオブジェクト。
-        base_path (str, optional): ファイルパスのベースとなるディレクトリ。デフォルトは空文字列。
+        sarif (Sarif): sarifの一つの検出結果
+        target_path (Path): 検出対象プロジェクトのルートディレクトリへのパス
 
     Returns:
-        str: 指定された行範囲のコードブロック。
+        str: 抽出されたコードブロック
     """
-    # ファイルパスを構築
-    if base_path:
-        file_path = str(Path(base_path) / qlcsv.path.lstrip("/"))
-    else:
-        file_path = qlcsv.path.lstrip("/")
+    # 1. ビルド成果物ディレクトリを除外
+    excluded_patterns = [
+        "build/",
+        "dist/",
+        "out/",
+        ".next/",
+        "target/",
+        "public/build/",
+        "static/build/",
+    ]
+    if any(sarif.file_path.startswith(pattern) for pattern in excluded_patterns):
+        return "[Build artifact - skipped]"
 
-    # ファイルを読み込む
-    content = read_file(file_path)
+    file_path = target_path / sarif.file_path.lstrip("/")
 
-    # 行ごとに分割
-    lines = content.splitlines()
+    # 2. ファイルの存在確認
+    if not file_path.exists():
+        return "[File not found]"
 
-    # start_lineからend_lineの範囲を切り出す（1-indexed → 0-indexed）
-    # start_lineとend_lineは両端を含む
-    start_idx = qlcsv.start_line - 1
-    end_idx = qlcsv.end_line
+    try:
+        # 3. UTF-8でデコードできない場合はエラーを無視して置換してデコード
+        with file_path.open(encoding="utf-8", errors="replace") as f:
+            lines = f.readlines()
 
-    # 指定範囲の行を取得
-    code_block_lines = lines[start_idx:end_idx]
+        # 4. 行番号の変換 (1-indexed -> 0-indexed)
+        start_idx = sarif.start_line - 1
+        end_idx = sarif.end_line  # end_lineは含むためスライスではそのまま
 
-    # 改行で結合
-    code_block = "\n".join(code_block_lines)
-    code_block = code_clean(code_block)
-    code_block = prettier(code_block)
-    return code_block
+        # 5. 範囲チェック
+        if start_idx < 0 or end_idx > len(lines):
+            return "[Line out of range]"
+
+        # 6. 該当行を抽出して結合
+        snippet_lines = lines[start_idx:end_idx]
+
+        # MB-Scanner流の結合処理
+        if len(snippet_lines) > 1:
+            snippet = "\n".join(line.rstrip("\n") for line in snippet_lines)
+        else:
+            snippet = snippet_lines[0].rstrip("\n") if snippet_lines else ""
+
+        # 7. 整形処理を適用
+        # エラーによりコードが出力されない場合があるためコメントアウト
+        # snippet = code_clean(snippet)
+
+        return snippet
+
+    except Exception as e:
+        return f"[Error: {e}]"

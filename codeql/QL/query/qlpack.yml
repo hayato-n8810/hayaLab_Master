@@ -1,0 +1,5 @@
+
+name: microbenchmark-pattern
+version: 1.0.0
+dependencies:
+  codeql/javascript-all: "*"

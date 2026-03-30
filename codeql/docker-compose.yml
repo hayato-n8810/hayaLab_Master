@@ -1,0 +1,25 @@
+services:
+  bachelor_codeql:
+    platform: linux/amd64
+    build:
+      context: ..
+      dockerfile: codeQL/Dockerfile
+      args:
+        UID: ${UID:-1000}
+        GID: ${GID:-1000}
+        USERNAME: ${USERNAME:-developer}
+    container_name: bachelor_codeql
+    user: "${UID:-1000}:${GID:-1000}"
+    environment:
+      - HAYALAB_PROJECT_ROOT=/works
+    volumes:
+      # codeQLプロジェクトを /works にマウント
+      - .:/works
+      # コンテナ内で手動実行した `codeql pack install` の依存関係を永続化する
+      - codeql-deps:/works/QL/query/.codeql
+    working_dir: /works
+    stdin_open: true
+    tty: true
+
+volumes:
+  codeql-deps:
