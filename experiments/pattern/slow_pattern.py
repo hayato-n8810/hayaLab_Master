@@ -10,7 +10,7 @@ MB_hasLoop_data = hayalab.read_json(f"{config.outputs}/pattern/MB_pre_analysis.j
 
 has_loop_id = []
 for mb_pair in MB_hasLoop_data:
-    if mb_pair["slow"]["has_loop"] == True or mb_pair["fast"]["has_loop"] == True:
+    if mb_pair["slow"]["has_loop"] or mb_pair["fast"]["has_loop"]:
         has_loop_id.append(mb_pair["id"])
 
 print(f"ループを含むMBペアの数: {len(has_loop_id)}")
