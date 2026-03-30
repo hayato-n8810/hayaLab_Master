@@ -38,9 +38,9 @@ class PathConfig(BaseModel):
         return self.data / "processed"
 
     @property
-    def output(self) -> Path:
+    def outputs(self) -> Path:
         """結果出力先ディレクトリのパスを返す"""
-        return self.root / "output"
+        return self.root / "outputs"
 
     @property
     def codeql(self) -> Path:

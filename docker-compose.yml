@@ -12,7 +12,7 @@ services:
       # マウントするローカルディレクトリ
       - ./data:/works/data
       - ./experiments:/works/experiments
-      - ./output:/works/output
+      - ./outputs:/works/outputs
       - ./src:/works/src
       # - ../repository:/repository
 
