@@ -1,21 +1,18 @@
-"""TODO
-メソッド呼び出しにおける実行順序の考慮
-現在：メソッドは文字列としての登場順
-理想：メソッドの呼び出し順
+"""処理内容
+AST(gumtree)の差分から低速コードの特徴を抽出する
 
-例: JSON.parse(JSON.stringify(VAR_2));
-現在 - parse → stringify の登場順
-理想 - stringify → parse の実行順
-
-extract_node_feature関数において取得する特徴量
-現在は以下の特徴量を取得
+以下の特徴量を取得
 - ループ文の種類(for_statement, for_in_statement, while_statement)とその派生特徴量
 - メソッド呼び出し(property_identifier)
 - new_expression（コンストラクタ呼び出し）
 - if_statement（条件分岐）
+
+TODO
+メソッド呼び出しにおける実行順序の考慮
+現在：メソッドは文字列としての登場順
+理想：メソッドの呼び出し順
 """
 
-# AST(gumtree)の差分からパターンを生成する
 import logging
 from concurrent.futures import ProcessPoolExecutor
 
@@ -47,13 +44,21 @@ def parallel_extract_feature(mb_diff_data: dict) -> dict:
     # Pydanticモデルで復元
     gumtree_diff = GumDiff.model_validate(diff_data)
 
+    # 変更前/変更後にループが含まれていないペアはスキップ
+    # pair_has_loop = has_loop(gumtree_diff)
+    # if not pair_has_loop:
+    #     return {"id": mb_id, "feature": None}
+
     # あるMBペアの低速コード（変更前）におけるすべての差分ブロックリスト
     # 対象とするアクション
     TARGET_ACTIONS = ["delete-node", "delete-tree", "update-node"]
     slow_diff_block = hayalab.base_diff_blocks(gumtree_diff, target_actions=TARGET_ACTIONS)
 
     # 各差分ブロックからパターンを抽出
-    mb_slow_feature = {"id": mb_id, "feature": []}
+    mb_slow_feature = {
+        "id": mb_id,
+        "feature": [],
+    }
     feature = feature_extractor.extract_features(slow_diff_block).to_dict()
     mb_slow_feature["feature"].append(feature)
 
@@ -66,39 +71,43 @@ if __name__ == "__main__":
     config = PathConfig()
 
     # ログ設定
-    logging.basicConfig(filename=f"{config.output}/MB_diff/slow_feature.log", level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", force=True)
+    logging.basicConfig(filename=f"{config.outputs}/pattern/slow_feature.log", level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", force=True)
 
     logging.info("===== Program started =====")
 
     # AST差分データの読み込み（diff.pyで出力されたJSONファイル）
-    mb_diff_json = hayalab.read_json(f"{config.output}/MB_diff/MBDiff.json")
+    mb_diff_json = hayalab.read_json(f"{config.outputs}/pattern/MBDiff.json")
 
     total = len(mb_diff_json)
     results = []
     skipped_ids = []
 
     # 並列処理で実行
-    max_workers = 20  # 同時実行プロセス数を制限
+    max_workers = 10  # 同時実行プロセス数を制限
     with ProcessPoolExecutor(max_workers=max_workers) as executor:
         results = list(tqdm.tqdm(executor.map(parallel_extract_feature, mb_diff_json), total=total, desc="Processing"))
 
     # パターンがNoneのものを分離
     skipped_ids = [r["id"] for r in results if r["feature"] is None]
 
+    # feature が None のものは出力結果から除外
+    results = [r for r in results if r["feature"] is not None]
+
     # 結果をJSONファイルに出力
-    output_path = f"{config.output}/MB_diff/slow_feature.json"
+    output_path = f"{config.outputs}/pattern/slow_feature.json"
     results.sort(key=lambda x: x["id"])
     hayalab.write_json(output_path, results)
 
     logging.info(f"Results saved to {output_path}")
     logging.info(f"Total processed: {len(results)}/{total}")
+    print(f"\nTotal processed: {len(results)}/{total}")
     if skipped_ids:
-        logging.info(f"Skipped IDs: {', '.join(skipped_ids)}")
+        logging.info(f"Skipped IDs: {', '.join(map(str, skipped_ids))}")
     logging.info("===== Program finished =====")
 
     # スキップしたIDを標準出力
     if skipped_ids:
-        print(f"\nSkipped IDs (no diff data): {', '.join(skipped_ids)}")
-        logging.info(f"Skipped IDs: {', '.join(skipped_ids)}")
+        print(f"\nSkipped IDs: {', '.join(map(str, skipped_ids))}")
+        logging.info(f"Skipped IDs: {', '.join(map(str, skipped_ids))}")
     print(f"\nProcessed: {len(results)}/{total}")
     print(f"Results saved to: {output_path}")
