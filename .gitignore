@@ -1,5 +1,6 @@
 # 個人設定
 .vscode/
+.github/
 
 # Python-generated files
 __pycache__/
