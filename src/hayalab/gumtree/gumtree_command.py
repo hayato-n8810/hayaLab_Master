@@ -51,7 +51,7 @@ def gum_parse(code: str) -> AST:
         temp_file.flush()
 
         # gumtreeによるASTの階層構造を整理
-        for i, line in enumerate(exec("gumtree", "parse", temp_file.name).split("\n")):
+        for i, line in enumerate(exec("gumtree", "parse", "-g", "js-treesitter-ng", temp_file.name).split("\n")):
             matched = re.match(r"( *)((.+) \[(\d+),(\d+)\])", line)
 
             if not matched:
@@ -99,7 +99,7 @@ def gum_diff(base: AST, head: AST) -> GumDiff | None:
         tmp_head.flush()
 
         # gumtree diffの実行
-        output = exec("gumtree", "textdiff", "-f", "JSON", tmp_base.name, tmp_head.name)
+        output = exec("gumtree", "textdiff", "-f", "JSON", "-g", "js-treesitter-ng", tmp_base.name, tmp_head.name)
 
     if output is None:
         return None
