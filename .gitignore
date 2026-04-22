@@ -24,3 +24,5 @@ data/
 
 # results files
 **outputs/
+
+tmp/
