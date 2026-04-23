@@ -11,10 +11,10 @@ from .abst.abst import abst
 
 # GumTree関連
 from .gumtree.gumtree_command import gum_diff, gum_parse
-from .gumtree.diff_block import base_diff_blocks, head_diff_blocks
-from .gumtree.analyzer import collect_method_name, count_label
-from .gumtree.feature_extractor import DiffFeatureExtractor
-from .gumtree.extractors import (
+from .gumtree.extract import base_diff_blocks, get_descendants, head_diff_blocks
+from .gumtree.scan import collect_method_name, count_label, find_scope_boundary_index, nearest_ancestor_index_by_name
+from .gumtree.others import (
+    DiffFeatureExtractor,
     ExtractionContext,
     FeatureExtractor,
     ForInStatementExtractor,
@@ -65,6 +65,9 @@ __all__ = [
     "NewExpressionExtractor",
     # パターン統合
     "integrate_features",
+    "nearest_ancestor_index_by_name",
+    "find_scope_boundary_index",
+    "get_descendants",
     # codeQL関連
     "extract_code_sarif",
     "parse_sarif",

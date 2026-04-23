@@ -12,14 +12,11 @@
 
 ```
 hayaLab/
-├── data/                    # マイクロベンチマークデータ（.gitignore）
+├── data/                    # 入力データ・中間データ（raw/processed）
 │   ├── raw/                 # 元データ（codes.json, patterns.json）
 │   └── processed/           # 処理済みデータ（MB_separate.json等）
-├── experiments/             # 実験スクリプト
-│   ├── MB_diff/            # マイクロベンチマーク差分解析
-│   ├── abst/               # 抽象化
-│   └── pattern/            # パターン抽出・統合
-├── output/                  # 実験スクリプトの出力先
+├── experiments/             # 実験スクリプト（入出力・パス・手順のオーケストレーション）
+├── outputs/                 # 実験/解析結果の出力先
 ├── src/hayalab/            # メインパッケージ
 │   ├── abst/               # コード抽象化モジュール
 │   ├── classes/            # データクラス定義（Feature, GumTree）
@@ -28,6 +25,8 @@ hayaLab/
 │   │   └── extractors/             # 各構文の特徴抽出器
 │   ├── pattern/            # パターン統合
 │   └── utils/              # ユーティリティ（babelAST, ファイルIO）
+├── QL/                      # CodeQL クエリ・実行補助
+├── targets/                 # 解析対象（GitHub / microbenchmark）
 ├── docker-compose.yml      # Docker環境設定
 ├── Dockerfile             # コンテナイメージ定義
 └── pyproject.toml         # プロジェクト設定
