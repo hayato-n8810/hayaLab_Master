@@ -31,8 +31,8 @@ def _diff_block_to_payloads(diff_block: dict[int, ASTNode]) -> list[dict[str, An
         list[dict[str, Any]]: 整形されたノード情報のリスト
     """
 
-    diff_block_payloads = []
-    for index, node in diff_block.items():
+    diff_block_payloads: list[dict[str, Any]] = []
+    for index, node in sorted(diff_block.items(), key=lambda x: x[0]):
         diff_block_payloads.append(
             {
                 "origin_index": index,
@@ -75,12 +75,12 @@ def _process_record(item: dict[str, Any]) -> dict[str, Any]:
     merged_nodes_map: dict[int, dict[str, Any]] = {}
 
     for block in hayalab.base_diff_blocks(gum_diff):
-        nodes_payload = _diff_block_to_payloads(block["diff_block"])
+        nodes_payload = _diff_block_to_payloads(block.diff_block)
         per_action.append(
             {
-                "action_index": block["action_index"],
-                "action_name": block["action_name"],
-                "action_tree": block["action_tree"],
+                "action_index": block.action_index,
+                "action_name": block.action_name,
+                "action_tree": block.action_tree,
                 "nodes": nodes_payload,
             }
         )
