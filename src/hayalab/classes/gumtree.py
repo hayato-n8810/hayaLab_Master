@@ -102,6 +102,16 @@ GumtreeDiff(
 )
 """
 
+
+class ActionBlock(BaseModel):
+    """差分ブロック（1 action 分）とメタ情報。"""
+
+    action_index: int | None
+    action_name: str
+    action_tree: str
+    diff_block: dict[int, ASTNode]
+
+
 # 利用例（メソッドを書く必要すらありません）
 # data = json.load(f)
 # diff = GumtreeDiff.model_validate(data)
