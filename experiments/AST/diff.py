@@ -62,4 +62,4 @@ if __name__ == "__main__":
 
     # 結果を辞書形式にまとめる
     results.sort(key=lambda x: x["id"])
-    hayalab.write_json(f"{config.outputs}/pattern/MBDiff.json", results)
+    hayalab.write_json(f"{config.outputs}/AST/MBDiff.json", results)
