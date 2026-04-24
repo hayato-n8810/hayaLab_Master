@@ -2,7 +2,7 @@
 
 from .extract import base_diff_blocks, cut_diff_blocks, get_descendants, head_diff_blocks
 from .gumtree_command import gum_diff, gum_parse
-from .others import (
+from ..pattern.others import (
     DiffFeatureExtractor,
     ExtractionContext,
     FeatureExtractor,

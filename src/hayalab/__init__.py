@@ -13,7 +13,7 @@ from .abst.abst import abst
 from .gumtree.gumtree_command import gum_diff, gum_parse
 from .gumtree.extract import base_diff_blocks, get_descendants, head_diff_blocks
 from .gumtree.scan import collect_method_name, count_label, find_scope_boundary_index, nearest_ancestor_index_by_name
-from .gumtree.others import (
+from .pattern.others import (
     DiffFeatureExtractor,
     ExtractionContext,
     FeatureExtractor,
