@@ -1,10 +1,9 @@
-"""MBDiff から差分ノードのスコープ配下ノードを抽出する。"""
+"""MBDiff から差分ノードを含むスコープ配下ノードを抽出する。"""
 
 from __future__ import annotations
 
 from concurrent.futures import ProcessPoolExecutor
 from os import cpu_count
-from time import perf_counter
 from typing import Any
 
 from tqdm import tqdm
@@ -93,7 +92,7 @@ def _process_record(item: dict[str, Any]) -> dict[str, Any]:
         per_action.append(
             {
                 "action_index": action_index,
-                "action_type": action.action,
+                "action_name": action.action,
                 "action_tree": action.tree,
                 "scope_index": scope_idx,
                 "scope_name": scope_name,
@@ -212,40 +211,30 @@ if __name__ == "__main__":
     start = 0
     end: int | None = None
 
-    start_time = perf_counter()
-
     # 入力を読み込み、処理対象レンジを決定する。
     records = hayalab.read_json(str(input_path))
     total_records = len(records)
-    start_idx = max(0, start)
-    end_idx = total_records if end is None else min(end, total_records)
-    if start_idx > end_idx:
-        start_idx, end_idx = end_idx, start_idx
-    target_records = records[start_idx:end_idx]
 
     # 実装対を変換する（必要なら並列実行）。
     if workers <= 1:
-        result = [_process_record(item) for item in tqdm(target_records, total=len(target_records), desc="Processing")]
+        result = [_process_record(item) for item in tqdm(records, total=len(records), desc="Processing")]
     else:
         with ProcessPoolExecutor(max_workers=workers) as executor:
-            result = list(tqdm(executor.map(_process_record, target_records), total=len(target_records), desc="Processing"))
+            result = list(tqdm(executor.map(_process_record, records), total=len(records), desc="Processing"))
 
     # 変換結果をJSONとして保存する。
     hayalab.write_json(str(output_path), result)
 
     # 変換結果の一致性に関する統計情報を集計する。
-    stats = result_statics(target_records, result)
+    stats = result_statics(records, result)
 
-    elapsed_sec = perf_counter() - start_time
     # 実行統計をログファイルへ保存する。
     log_lines = [
         f"入力={input_path}",
         f"出力={output_path}",
         f"全実装対数={total_records}",
-        f"処理範囲=[{start_idx}, {end_idx})",
         f"ワーカー数={workers}",
         f"処理実装対数={len(result)}",
-        f"経過秒={elapsed_sec:.6f}",
         f"merged.nodes が base_ast の全ノードと完全一致={stats['full_match_with_original_count']}",
         f"merged.nodes が base_ast の全ノードと完全一致したID={','.join(map(str, stats['full_match_with_original_ids']))}",
         # ある1つの per_action エントリの nodes が merged.nodes と完全一致したアクション単位の数とID（実装対ID:action_index 形式）
@@ -268,6 +257,5 @@ if __name__ == "__main__":
     print(f"Input: {input_path}")
     print(f"Output: {output_path}")
     print(f"Log: {log_path}")
-    print(f"Range: [{start_idx}, {end_idx})")
     print(f"Workers: {workers}")
     print(f"Processed 実装対数: {len(result)}")
