@@ -1,7 +1,7 @@
 # 個人設定
-.vscode/
+.agent/plans/
 .github/
-.gemini/
+.vscode/
 
 # Python-generated files
 __pycache__/
