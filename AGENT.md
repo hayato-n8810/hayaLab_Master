@@ -94,3 +94,4 @@ Claude Code はこのプロジェクトで以下の機能を持つ。
 @.agent/agent-instructions.md
 @.agent/instructions/python-research.md
 @.agent/instructions/codeql-query.md
+@.agent/instructions/granularity-analysis.md
