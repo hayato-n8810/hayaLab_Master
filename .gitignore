@@ -1,6 +1,7 @@
 # 個人設定
 .agent/plans/
 .github/
+.claude/
 .vscode/
 
 # Python-generated files

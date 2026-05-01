@@ -1,3 +1,8 @@
+---
+name: codeql-regression-check
+description: Review CodeQL query changes for precision/recall impact, schema compatibility, and reproducibility risks. Use when editing QL/query/**/*.ql files.
+---
+
 # CodeQL Regression Check
 
 CodeQL query の変更をレビューする際、precision/recall の変動、スキーマ互換性、再現性リスクを確認するために使用する。
