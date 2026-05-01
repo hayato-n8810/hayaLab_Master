@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from .extractors import (
+    DoWhileStatementExtractor,
     ExtractionContext,
     FeatureExtractor,
     ForInStatementExtractor,
@@ -12,15 +13,16 @@ from .extractors import (
     PropertyIdentifierExtractor,
     WhileStatementExtractor,
 )
-from .feature_extractor import DiffFeatureExtractor
+from .feature_extractor import extract_diff_features
 
 __all__ = [
-    "DiffFeatureExtractor",
+    "extract_diff_features",
     "ExtractionContext",
     "FeatureExtractor",
     "ForStatementExtractor",
     "ForInStatementExtractor",
     "WhileStatementExtractor",
+    "DoWhileStatementExtractor",
     "IfStatementExtractor",
     "PropertyIdentifierExtractor",
     "NewExpressionExtractor",

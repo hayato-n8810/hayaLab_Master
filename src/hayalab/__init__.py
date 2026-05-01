@@ -12,9 +12,9 @@ from .abst.abst import abst
 # GumTree関連
 from .gumtree.gumtree_command import gum_diff, gum_parse
 from .gumtree.extract import base_diff_blocks, get_descendants, head_diff_blocks
-from .gumtree.scan import collect_method_name, count_label, find_scope_boundary_index, nearest_ancestor_index_by_name
+from .gumtree.scan import collect_method_name, count_label, find_scope_boundary_index
 from .pattern.others import (
-    DiffFeatureExtractor,
+    DoWhileStatementExtractor,
     ExtractionContext,
     FeatureExtractor,
     ForInStatementExtractor,
@@ -23,6 +23,7 @@ from .pattern.others import (
     NewExpressionExtractor,
     PropertyIdentifierExtractor,
     WhileStatementExtractor,
+    extract_diff_features,
 )
 
 # パターン統合
@@ -53,19 +54,19 @@ __all__ = [
     "head_diff_blocks",
     "count_label",
     "collect_method_name",
-    "DiffFeatureExtractor",
+    "extract_diff_features",
     # 特徴抽出器
     "ExtractionContext",
     "FeatureExtractor",
     "ForStatementExtractor",
     "ForInStatementExtractor",
     "WhileStatementExtractor",
+    "DoWhileStatementExtractor",
     "IfStatementExtractor",
     "PropertyIdentifierExtractor",
     "NewExpressionExtractor",
     # パターン統合
     "integrate_features",
-    "nearest_ancestor_index_by_name",
     "find_scope_boundary_index",
     "get_descendants",
     # codeQL関連

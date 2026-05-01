@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Optional
 
-from hayalab.classes.feature import FeatureNode, NodePosition
+from hayalab.classes.feature import NodePosition, SyntaxFeature
 from hayalab.classes.gumtree import ASTNode
 
 
@@ -14,7 +14,6 @@ class ExtractionContext:
 
     nodes: list[ASTNode]  # 差分ブロックのノードリスト
     node_index: int = 0  # 現在処理中のノードインデックス
-    depth: int = 0  # 階層の深さ
     order: int = 0  # 同一階層内での順序
     position: NodePosition = NodePosition.ROOT  # 構造的位置
     processed_indices: set[int] = field(default_factory=set)  # 処理済みインデックス
@@ -24,13 +23,16 @@ class ExtractionContext:
         return self.nodes[self.node_index]
 
     def get_children_indices(self, parent_idx: int) -> list[int]:
-        """指定したノードの直接の子ノードのインデックスを取得"""
+        """指定したノードの直接の子ノードのインデックスを取得
+
+        parent配列の先頭部分の一致に加え、origin_indexが利用可能な場合は
+        child.parent[-1] == parent_node.origin_index も検証する。
+        """
         parent_node = self.nodes[parent_idx]
         parent_depth = len(parent_node.parent)
         target_depth = parent_depth + 1
+        parent_origin_index = parent_node.origin_index
 
-        # 親ノードのparentに自身のインデックスを加えたものが子のparentになる
-        # ただし差分ブロック内でのインデックスではなく、元ASTのインデックスを使用
         children_indices = []
 
         for idx in range(parent_idx + 1, len(self.nodes)):
@@ -38,6 +40,10 @@ class ExtractionContext:
             if len(node.parent) == target_depth:
                 # 親のparentが子のparentの先頭部分と一致するか確認
                 if node.parent[:parent_depth] == parent_node.parent:
+                    # origin_indexが利用可能なら、parent[-1]が一致するか検証
+                    if parent_origin_index is not None:
+                        if node.parent[-1] != parent_origin_index:
+                            continue
                     children_indices.append(idx)
 
         return children_indices
@@ -47,7 +53,6 @@ class ExtractionContext:
         return ExtractionContext(
             nodes=self.nodes,
             node_index=child_idx,
-            depth=self.depth + 1,
             order=order,
             position=position,
             processed_indices=self.processed_indices,
@@ -63,7 +68,7 @@ class FeatureExtractor(ABC):
         pass
 
     @abstractmethod
-    def extract(self, context: ExtractionContext) -> Optional[FeatureNode]:
+    def extract(self, context: ExtractionContext) -> Optional[SyntaxFeature]:
         """特徴を抽出"""
         pass
 

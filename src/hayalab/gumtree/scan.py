@@ -38,27 +38,6 @@ def collect_method_name(ast: AST) -> list[str]:
     return methods
 
 
-def nearest_ancestor_index_by_name(
-    node: ASTNode,
-    tree: list[ASTNode],
-    target_names: set[str],
-) -> int | None:
-    """対象ノードから最も近い指定名の祖先 index を取得する。
-
-    Args:
-        node (ASTNode): 探索対象ノード。
-        tree (list[ASTNode]): ASTノード列。
-        target_names (set[str]): 探索対象のノード名集合。
-
-    Returns:
-        int | None: 見つかった祖先 index。見つからない場合は None。
-    """
-    for parent_idx in reversed(node.parent):
-        if tree[parent_idx].name in target_names:
-            return parent_idx
-    return None
-
-
 def find_scope_boundary_index(
     node: ASTNode,
     tree: list[ASTNode],
@@ -74,4 +53,7 @@ def find_scope_boundary_index(
     Returns:
         int | None: 見つかったスコープ境界 index。見つからない場合は None。
     """
-    return nearest_ancestor_index_by_name(node, tree, scope_boundary)
+    for parent_idx in reversed(node.parent):
+        if tree[parent_idx].name in scope_boundary:
+            return parent_idx
+    return None

@@ -1,13 +1,16 @@
 """特徴抽出器モジュール"""
 
 from .base import ExtractionContext, FeatureExtractor
-from .node import (
+from .loop import (
+    DoWhileStatementExtractor,
     ForInStatementExtractor,
     ForStatementExtractor,
+    WhileStatementExtractor,
+)
+from .node import (
     IfStatementExtractor,
     NewExpressionExtractor,
     PropertyIdentifierExtractor,
-    WhileStatementExtractor,
 )
 
 __all__ = [
@@ -16,6 +19,7 @@ __all__ = [
     "ForStatementExtractor",
     "ForInStatementExtractor",
     "WhileStatementExtractor",
+    "DoWhileStatementExtractor",
     "IfStatementExtractor",
     "PropertyIdentifierExtractor",
     "NewExpressionExtractor",

@@ -2,7 +2,7 @@
 
 from .integrate import integrate_features
 from .others import (
-    DiffFeatureExtractor,
+    DoWhileStatementExtractor,
     ExtractionContext,
     FeatureExtractor,
     ForInStatementExtractor,
@@ -11,11 +11,12 @@ from .others import (
     NewExpressionExtractor,
     PropertyIdentifierExtractor,
     WhileStatementExtractor,
+    extract_diff_features,
 )
 
 __all__ = [
     "integrate_features",
-    "DiffFeatureExtractor",
+    "extract_diff_features",
     "ExtractionContext",
     "FeatureExtractor",
     "ForInStatementExtractor",
@@ -24,4 +25,5 @@ __all__ = [
     "NewExpressionExtractor",
     "PropertyIdentifierExtractor",
     "WhileStatementExtractor",
+    "DoWhileStatementExtractor",
 ]
