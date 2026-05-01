@@ -101,9 +101,9 @@ def _process_record(item: dict[str, Any]) -> dict[str, Any]:
 if __name__ == "__main__":
     config = PathConfig()
 
-    input_path = config.data / "test_data" / "MBDiff_test.json"
-    output_path = config.outputs / "AST" / "scope_DIFF_BLOCK.json"
-    log_path = config.outputs / "AST" / "scope_DIFF_BLOCK.log"
+    input_path = config.data / "processed" / "MBDiff.json"
+    output_path = config.outputs / "AST" / "scope_DIFF_BLOCK_targets.json"
+    log_path = config.outputs / "AST" / "scope_DIFF_BLOCK_targets.log"
 
     # 並列数。1にすると逐次実行。
     WORKERS = 6
@@ -112,6 +112,8 @@ if __name__ == "__main__":
 
     # 入力を読み込み、処理対象レンジを決定する。
     records = hayalab.read_json(str(input_path))
+    target_ids = {222, 609, 791, 902, 1206, 1306, 1691, 2512, 2919, 6182, 8126, 14412, 21294, 23864}
+    records = [r for r in records if r.get("id") in target_ids]
     total_records = len(records)
 
     # 実装対を変換する（必要なら並列実行）。

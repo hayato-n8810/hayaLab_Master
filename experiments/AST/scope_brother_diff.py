@@ -1,4 +1,4 @@
-"""MBDiff から差分ノードを含むスコープ配下ノードを抽出する。"""
+"""MBDiff から差分ノードと兄弟要素を抽出する。"""
 
 from __future__ import annotations
 
@@ -50,12 +50,115 @@ SCOPE_BOUNDARY: set[str] = {
 
 
 def _to_node_payload(index: int, node: ASTNode) -> dict[str, int | str | list[int]]:
-    """元のAST形式を維持したノード情報に整形"""
-    return {"origin_index": index, "begin": node.begin, "end": node.end, "label": node.label, "name": node.name, "value": node.value, "parent": node.parent}
+    """元のAST形式を維持したノード情報に整形する。
+
+    Args:
+            index: base_ast 内のノードインデックス。
+            node: ASTノード。
+
+    Returns:
+            dict[str, int | str | list[int]]: 変換済みノード情報。
+    """
+    return {
+        "origin_index": index,
+        "begin": node.begin,
+        "end": node.end,
+        "label": node.label,
+        "name": node.name,
+        "value": node.value,
+        "parent": node.parent,
+    }
+
+
+def _get_sibling_root_indices(
+    tree: list[ASTNode],
+    action_index: int,
+    scope_idx: int | None,
+) -> list[int]:
+    """差分ノードの兄弟要素（同一親を持つ直下ノード）のインデックスを取得する。
+
+    Args:
+            tree: base_ast のノード列。
+            action_index: 差分ノードのインデックス。
+            scope_idx: スコープ境界ノードのインデックス。
+
+    Returns:
+            list[int]: 兄弟要素のインデックス（差分ノードを含む）。
+    """
+    if scope_idx is None:
+        return []
+    if action_index == scope_idx:
+        return []
+
+    action_node = tree[action_index]
+    action_node_parent = action_node.parent
+    if not action_node_parent:
+        return []
+
+    # 差分ノードにおける，スコープ境界ノードの一つ下の階層を兄弟判定に利用する
+    scope = action_node_parent.index(scope_idx)
+    if scope + 1 >= len(action_node_parent):
+        return []
+    parent_idx = action_node_parent[scope + 1]
+    if parent_idx is None or not (0 <= parent_idx < len(tree)):
+        return []
+
+    sibling_indices: list[int] = []
+    for idx, node in enumerate(tree):
+        if not node.parent:
+            continue
+        if node.parent[-1] != parent_idx:
+            continue
+        if scope_idx not in node.parent:
+            continue
+        sibling_indices.append(idx)
+
+    return sorted(sibling_indices)
+
+
+def _collect_sibling_nodes(
+    tree: list[ASTNode],
+    action_index: int,
+    scope_idx: int | None,
+) -> list[dict[str, int | str | list[int]]]:
+    """差分ノードと兄弟要素の部分木を収集してpayload化する。
+
+    Args:
+            tree: base_ast のノード列。
+            action_index: 差分ノードのインデックス。
+            scope_idx: スコープ境界ノードのインデックス。
+
+    Returns:
+            list[dict[str, int | str | list[int]]]: 収集したノードpayload。
+    """
+    sibling_roots = _get_sibling_root_indices(tree, action_index, scope_idx)
+    nodes_map: dict[int, dict[str, int | str | list[int]]] = {}
+
+    # 兄弟要素の部分木を収集する。
+    for root_idx in sibling_roots:
+        for index, node in get_descendants(root_idx, tree):
+            if scope_idx is not None and index == scope_idx:
+                continue
+            nodes_map[index] = _to_node_payload(index, node)
+
+    # 差分ノード自身の部分木も収集する。
+    for index, node in get_descendants(action_index, tree):
+        if scope_idx is not None and index == scope_idx:
+            continue
+        nodes_map[index] = _to_node_payload(index, node)
+
+    return [nodes_map[index] for index in sorted(nodes_map)]
 
 
 def _process_record(item: dict[str, Any]) -> dict[str, Any]:
-    """MBDiff 1実装対を scope_BLOCK_INCLUDE_DIFF 形式に変換する。"""
+    """MBDiff 1実装対を scope_BROTHER_DIFF 形式に変換する。
+
+    Args:
+            item: 1実装対のレコード。
+
+    Returns:
+            dict[str, Any]: 変換結果。
+    """
     record_id = item.get("id")
     diff_data = item.get("diff")
 
@@ -70,23 +173,20 @@ def _process_record(item: dict[str, Any]) -> dict[str, Any]:
     gum_diff = GumDiff.model_validate(diff_data)
     tree = gum_diff.base_ast.tree
     per_action: list[dict[str, Any]] = []
-    merged_nodes_map: dict[int, dict[str, int | str]] = {}
+    merged_nodes_map: dict[int, dict[str, int | str | list[int]]] = {}
 
-    # base_actions ごとにスコープ境界と配下ノードを収集する。
+    # base_actions ごとにスコープ境界内の兄弟要素を収集する。
     for action in gum_diff.base_actions:
         action_index = action.index
         scope_idx: int | None = None
         scope_name: str | None = None
-        nodes: list[dict[str, int | str]] = []
+        nodes: list[dict[str, int | str | list[int]]] = []
 
         if action_index is not None and 0 <= action_index < len(tree):
             scope_idx = find_scope_boundary_index(tree[action_index], tree, SCOPE_BOUNDARY)
             if scope_idx is not None:
                 scope_name = tree[scope_idx].name
-                descendants = get_descendants(scope_idx, tree)
-                # 出力仕様に合わせて node payload に変換する。
-                nodes = [_to_node_payload(index, node) for index, node in descendants]
-                # merged 用に index をキーにして重複排除する。
+                nodes = _collect_sibling_nodes(tree, action_index, scope_idx)
                 for node_payload in nodes:
                     merged_nodes_map[node_payload["origin_index"]] = node_payload
 
@@ -114,11 +214,11 @@ def result_statics(target_records: list[dict[str, Any]], result: list[dict[str, 
     """抽出結果の一致性に関する統計情報を集計する。
 
     Args:
-        target_records (list[dict[str, Any]]): 入力実装対（処理対象範囲）。
-        result (list[dict[str, Any]]): 変換結果。
+            target_records: 入力実装対（処理対象範囲）。
+            result: 変換結果。
 
     Returns:
-        dict[str, Any]: 統計情報。
+            dict[str, Any]: 統計情報。
     """
     full_match_with_original_count = 0
     full_match_with_original_ids: list[int] = []
@@ -204,9 +304,14 @@ if __name__ == "__main__":
 
     # 実行設定をここで一括指定する（CLIは使わない）。
     input_path = config.data / "processed" / "MBDiff.json"
-    output_path = config.outputs / "AST" / "scope_BLOCK_INCLUDE_DIFF_targets.json"
-    log_path = config.outputs / "AST" / "scope_BLOCK_INCLUDE_DIFF_targets.log"
+    output_path = config.outputs / "AST" / "scope_BROTHER_DIFF_target.json"
+    log_path = config.outputs / "AST" / "scope_BROTHER_DIFF_target.log"
     WORKERS = 6
+
+    if not input_path.exists():
+        raise FileNotFoundError(f"入力ファイルが見つかりません: {input_path}")
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
 
     workers = WORKERS if cpu_count() < WORKERS else cpu_count()
     start = 0
@@ -228,34 +333,34 @@ if __name__ == "__main__":
     # 変換結果をJSONとして保存する。
     hayalab.write_json(str(output_path), result)
 
-    # 変換結果の一致性に関する統計情報を集計する。
-    stats = result_statics(records, result)
+    # # 変換結果の一致性に関する統計情報を集計する。
+    # stats = result_statics(records, result)
 
-    # 実行統計をログファイルへ保存する。
-    log_lines = [
-        f"入力={input_path}",
-        f"出力={output_path}",
-        f"全実装対数={total_records}",
-        f"ワーカー数={workers}",
-        f"処理実装対数={len(result)}",
-        f"merged.nodes が base_ast の全ノードと完全一致={stats['full_match_with_original_count']}",
-        f"merged.nodes が base_ast の全ノードと完全一致したID={','.join(map(str, stats['full_match_with_original_ids']))}",
-        # ある1つの per_action エントリの nodes が merged.nodes と完全一致したアクション単位の数とID（実装対ID:action_index 形式）
-        f"per_actionとmergedが完全一致した件数（編集操作ごと）={stats['per_action_merged_exact_action_count']}",
-        f"per_actionとmergedが完全一致したID（実装対ID:action_index）={','.join(stats['per_action_merged_exact_action_ids'])}",
-        # 全アクションの nodes が merged.nodes と一致した実装対の数とID。つまりアクションが1つ、またはすべて同じスコープに収まっている
-        f"per_actionとmergedが完全一致した件数（実装対ごと）={stats['per_action_merged_exact_record_count']}",
-        f"per_actionとmergedが完全一致した実装対ID）={','.join(map(str, stats['per_action_merged_exact_record_ids']))}",
-        # 同一実装対内の複数アクション間で nodes がすべて互いに一致した実装対の数とID。複数の差分が同じスコープ
-        f"per_action同士がすべて完全一致した件数={stats['per_action_all_equal_record_count']}",
-        f"per_action同士がすべて完全一致した実装対ID={','.join(map(str, stats['per_action_all_equal_record_ids']))}",
-        # 同一実装対内のアクションを2つずつ比較したとき、nodes が一致したペアの数とID（実装対ID:actionA-actionB 形式）
-        f"per_action同士が完全一致したpair件数={stats['per_action_equal_pairs_count']}",
-        f"per_action同士が完全一致したpairID(実装対ID:actionA-actionB)={','.join(stats['per_action_equal_pairs_ids'])}",
-        # 処理した編集操作の総数
-        f"処理した編集操作の総数={stats['per_action_total_count']}",
-    ]
-    hayalab.write_file(str(log_path), "\n".join(log_lines) + "\n")
+    # # 実行統計をログファイルへ保存する。
+    # log_lines = [
+    #     f"入力={input_path}",
+    #     f"出力={output_path}",
+    #     f"全実装対数={total_records}",
+    #     f"ワーカー数={workers}",
+    #     f"処理実装対数={len(result)}",
+    #     f"merged.nodes が base_ast の全ノードと完全一致={stats['full_match_with_original_count']}",
+    #     f"merged.nodes が base_ast の全ノードと完全一致したID={','.join(map(str, stats['full_match_with_original_ids']))}",
+    #     # ある1つの per_action エントリの nodes が merged.nodes と完全一致したアクション単位の数とID（実装対ID:action_index 形式）
+    #     f"per_actionとmergedが完全一致した件数（編集操作ごと）={stats['per_action_merged_exact_action_count']}",
+    #     f"per_actionとmergedが完全一致したID（実装対ID:action_index）={','.join(stats['per_action_merged_exact_action_ids'])}",
+    #     # 全アクションの nodes が merged.nodes と一致した実装対の数とID。つまりアクションが1つ、またはすべて同じスコープに収まっている
+    #     f"per_actionとmergedが完全一致した件数（実装対ごと）={stats['per_action_merged_exact_record_count']}",
+    #     f"per_actionとmergedが完全一致した実装対ID）={','.join(map(str, stats['per_action_merged_exact_record_ids']))}",
+    #     # 同一実装対内の複数アクション間で nodes がすべて互いに一致した実装対の数とID。複数の差分が同じスコープ
+    #     f"per_action同士がすべて完全一致した件数={stats['per_action_all_equal_record_count']}",
+    #     f"per_action同士がすべて完全一致した実装対ID={','.join(map(str, stats['per_action_all_equal_record_ids']))}",
+    #     # 同一実装対内のアクションを2つずつ比較したとき、nodes が一致したペアの数とID（実装対ID:actionA-actionB 形式）
+    #     f"per_action同士が完全一致したpair件数={stats['per_action_equal_pairs_count']}",
+    #     f"per_action同士が完全一致したpairID(実装対ID:actionA-actionB)={','.join(stats['per_action_equal_pairs_ids'])}",
+    #     # 処理した編集操作の総数
+    #     f"処理した編集操作の総数={stats['per_action_total_count']}",
+    # ]
+    # hayalab.write_file(str(log_path), "\n".join(log_lines) + "\n")
 
     print(f"Input: {input_path}")
     print(f"Output: {output_path}")
