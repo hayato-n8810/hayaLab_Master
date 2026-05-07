@@ -57,3 +57,35 @@ def find_scope_boundary_index(
         if tree[parent_idx].name in scope_boundary:
             return parent_idx
     return None
+
+
+def find_sibling_root_indices(
+    tree: list[ASTNode],
+    action_index: int,
+    scope_idx: int,
+) -> list[int]:
+    """差分ノードと同じスコープ直下の兄弟ルートインデックスを返す。
+
+    差分ノードの parent チェーン内で scope_idx の一つ下の階層を特定し、
+    そのノードを直接親に持つノードを兄弟ルートとして返す。
+
+    Args:
+        tree: ASTノード列。
+        action_index: 差分ノードのインデックス。
+        scope_idx: スコープ境界ノードのインデックス。
+
+    Returns:
+        兄弟ルートノードのインデックスリスト（昇順）。
+    """
+    if action_index == scope_idx:
+        return []
+    action_node = tree[action_index]
+    if not action_node.parent:
+        return []
+    scope = action_node.parent.index(scope_idx)
+    if scope + 1 >= len(action_node.parent):
+        return []
+    parent_idx = action_node.parent[scope + 1]
+    if not (0 <= parent_idx < len(tree)):
+        return []
+    return sorted(idx for idx, node in enumerate(tree) if node.parent and node.parent[-1] == parent_idx and scope_idx in node.parent)
