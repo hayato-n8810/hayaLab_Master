@@ -27,4 +27,6 @@ data/
 # results files
 **outputs/
 
+# others
 tmp/
+thesis/
