@@ -5,6 +5,8 @@
   - scope_BROTHER_DIFF_targets.json       : 差分ノードの直接親の子孫
   - scope_BLOCK_EXCLUDE_PARENT_targets.json : スコープ境界内の兄弟+差分ノードの部分木（境界自身を除く）
   - scope_BLOCK_INCLUDE_DIFF_targets.json : スコープ境界ノードの全子孫（境界自身を含む）
+
+TODO: updateやmoveも考慮して考える（head_actionsにbase_actionsのupdateとmoveも含めて考える）
 """
 
 from __future__ import annotations
@@ -20,10 +22,10 @@ import hayalab
 from hayalab.classes.gumtree import GumDiff
 from hayalab.config import PathConfig
 from hayalab.gumtree.extract import (
-    base_scope_block_exclude_parent,
-    base_scope_block_include_parent,
-    base_scope_brother,
-    base_scope_diff,
+    head_scope_block_exclude_parent,
+    head_scope_block_include_parent,
+    head_scope_brother,
+    head_scope_diff,
 )
 
 # スコープ境界とみなすノード名の集合
@@ -76,19 +78,19 @@ def _wrap(item: dict[str, Any], extract_fn: Callable[[GumDiff], dict[str, Any]])
 
 
 def _process_diff(item: dict[str, Any]) -> dict[str, Any]:
-    return _wrap(item, base_scope_diff)
+    return _wrap(item, head_scope_diff)
 
 
 def _process_brother(item: dict[str, Any]) -> dict[str, Any]:
-    return _wrap(item, base_scope_brother)
+    return _wrap(item, head_scope_brother)
 
 
 def _process_exclude_parent(item: dict[str, Any]) -> dict[str, Any]:
-    return _wrap(item, lambda gd: base_scope_block_exclude_parent(gd, SCOPE_BOUNDARY))
+    return _wrap(item, lambda gd: head_scope_block_exclude_parent(gd, SCOPE_BOUNDARY))
 
 
 def _process_include_parent(item: dict[str, Any]) -> dict[str, Any]:
-    return _wrap(item, lambda gd: base_scope_block_include_parent(gd, SCOPE_BOUNDARY))
+    return _wrap(item, lambda gd: head_scope_block_include_parent(gd, SCOPE_BOUNDARY))
 
 
 # ──────────────────────────────────────────────────────────
@@ -125,22 +127,22 @@ if __name__ == "__main__":
     tasks: list[tuple[str, Any, Callable]] = [
         (
             "scope_DIFF_BLOCK",
-            config.outputs / "AST" / "scope_DIFF_BLOCK_targets.json",
+            config.outputs / "AST_HEAD" / "scope_DIFF_BLOCK_targets.json",
             _process_diff,
         ),
         (
             "scope_BROTHER_DIFF",
-            config.outputs / "AST" / "scope_BROTHER_DIFF_targets.json",
+            config.outputs / "AST_HEAD" / "scope_BROTHER_DIFF_targets.json",
             _process_brother,
         ),
         (
             "scope_BLOCK_EXCLUDE_PARENT",
-            config.outputs / "AST" / "scope_BLOCK_EXCLUDE_PARENT_targets.json",
+            config.outputs / "AST_HEAD" / "scope_BLOCK_EXCLUDE_PARENT_targets.json",
             _process_exclude_parent,
         ),
         (
             "scope_BLOCK_INCLUDE_DIFF",
-            config.outputs / "AST" / "scope_BLOCK_INCLUDE_DIFF_targets.json",
+            config.outputs / "AST_HEAD" / "scope_BLOCK_INCLUDE_DIFF_targets.json",
             _process_include_parent,
         ),
     ]
