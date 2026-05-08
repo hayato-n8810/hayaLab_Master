@@ -1,10 +1,10 @@
 """各粒度のASTスコープを抽出して保存する。
 
 実行すると4種類のスコープファイルを順次生成する：
-  - scope_DIFF_BLOCK_targets.json         : 差分ノード + 配下
-  - scope_BROTHER_DIFF_targets.json       : 差分ノードの直接親の子孫
-  - scope_BLOCK_EXCLUDE_PARENT_targets.json : スコープ境界内の兄弟+差分ノードの部分木（境界自身を除く）
-  - scope_BLOCK_INCLUDE_DIFF_targets.json : スコープ境界ノードの全子孫（境界自身を含む）
+  - scope_DIFF_BLOCK_all.json         : 差分ノード + 配下
+  - scope_BROTHER_DIFF_all.json       : 差分ノードの直接親の子孫
+  - scope_BLOCK_EXCLUDE_PARENT_all.json : スコープ境界内の兄弟+差分ノードの部分木（境界自身を除く）
+  - scope_BLOCK_INCLUDE_DIFF_all.json : スコープ境界ノードの全子孫（境界自身を含む）
 """
 
 from __future__ import annotations
@@ -111,7 +111,7 @@ def _run(
 if __name__ == "__main__":
     config = PathConfig()
 
-    input_path = config.data / "test_data" / "MBDiff_target.json"
+    input_path = config.processed / "MBDiff.json"
     if not input_path.exists():
         raise FileNotFoundError(f"入力ファイルが見つかりません: {input_path}")
 
@@ -125,22 +125,22 @@ if __name__ == "__main__":
     tasks: list[tuple[str, Any, Callable]] = [
         (
             "scope_DIFF_BLOCK",
-            config.outputs / "AST" / "scope_DIFF_BLOCK_targets.json",
+            config.outputs / "AST" / "scope_DIFF_BLOCK_all.json",
             _process_diff,
         ),
         (
             "scope_BROTHER_DIFF",
-            config.outputs / "AST" / "scope_BROTHER_DIFF_targets.json",
+            config.outputs / "AST" / "scope_BROTHER_DIFF_all.json",
             _process_brother,
         ),
         (
             "scope_BLOCK_EXCLUDE_PARENT",
-            config.outputs / "AST" / "scope_BLOCK_EXCLUDE_PARENT_targets.json",
+            config.outputs / "AST" / "scope_BLOCK_EXCLUDE_PARENT_all.json",
             _process_exclude_parent,
         ),
         (
             "scope_BLOCK_INCLUDE_DIFF",
-            config.outputs / "AST" / "scope_BLOCK_INCLUDE_DIFF_targets.json",
+            config.outputs / "AST" / "scope_BLOCK_INCLUDE_DIFF_all.json",
             _process_include_parent,
         ),
     ]
