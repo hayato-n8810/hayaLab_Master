@@ -441,21 +441,18 @@ def _process_single_id(args: tuple) -> tuple[dict, dict]:
 
     # ── 候補の収集・前処理 ──
     candidates = collect_candidates(scope_sources)
+
+    # フィルタリング前（重複除去前）の全候補の bone
+    all_candidates_bones: list[dict] = [
+        {
+            "scope_name": c["name"],
+            "bone": build_program_born_full(c["nodes"]),
+        }
+        for c in candidates
+    ]
+
     candidates = deduplicate_candidates(candidates)
     candidates = filter_symbolic_candidates(candidates)
-
-    # フィルタリング後の全候補について program_born_full を生成する
-    # str_R 評価前の段階で記録することで 元コードに成立しない候補も含めた全候補の骨格を保存する
-    bone_entry: dict = {
-        "id": program_id,
-        "candidates": [
-            {
-                "scope_name": c["name"],
-                "program_born_full": build_program_born_full(c["nodes"]),
-            }
-            for c in candidates
-        ],
-    }
 
     # ── str_R 評価・スコープ選択 ──
     diff_nodes = get_diff_nodes(candidates)
@@ -468,31 +465,27 @@ def _process_single_id(args: tuple) -> tuple[dict, dict]:
         d_ratio = calc_diff_ratio(cand["nodes"], diff_nodes)
         sib_comp = calc_sibling_completeness(cand["nodes"], diff_nodes, full_tree)
         harmonic = 2 * d_ratio * sib_comp / (d_ratio + sib_comp) if (d_ratio + sib_comp) > 0 else 0.0
-        is_selected = best_candidate is not None and cand["name"] == best_candidate["name"]
 
         candidate_details.append(
             {
                 "scope_name": cand["name"],
                 "node_count": len(cand["nodes"]),
+                "bone": build_program_born_full(cand["nodes"]),
                 "str_R": cand["str_R"],
                 "regex_query": cand["regex_query"],
                 "diff_ratio": round(d_ratio, 4),
                 "sibling_completeness": round(sib_comp, 4),
                 "score": round(harmonic, 4),
-                "is_selected": is_selected,
             }
         )
 
-    output_record: dict = {
-        "id": program_id,
-        "candidates": candidate_details,
-        "selected": {
-            "scope_name": best_candidate["name"] if best_candidate else None,
-            "nodes": best_candidate["nodes"] if best_candidate else [],
-        },
-    }
+    # 選択されたスコープ
+    output_record: dict = {"id": program_id, "scope_name": best_candidate["name"] if best_candidate else None, "nodes": best_candidate["nodes"] if best_candidate else []}
 
-    return output_record, bone_entry
+    # 候補に関する情報
+    instruction_entry: dict = {"id": program_id, "all_candidates": all_candidates_bones, "after_filter_candidates": candidate_details, "selected": best_candidate["name"] if best_candidate else None}
+
+    return output_record, instruction_entry
 
 
 # ── メイン ────────────────────────────────────────────────────────────────────
@@ -504,7 +497,8 @@ def main() -> None:
 
     # ── コーパスの読み込み ──
     print("loading data...", flush=True)
-    corpus_entries: list[dict] = hayalab.read_json(str(config.data / "processed" / "MBDiff.json"))
+    corpus_entries: list[dict] = hayalab.read_json(str(config.processed / "MBDiff.json"))
+    # corpus_entries: list[dict] = hayalab.read_json(str(config.data / "test_data" / "MBDiff_target.json"))
 
     # sibling_completeness 計算用の full AST（対象 ID のみ後で参照する）
     corpus_full_trees: dict[int, list[dict]] = {entry["id"]: entry["diff"]["base_ast"]["tree"] for entry in corpus_entries}
@@ -520,6 +514,12 @@ def main() -> None:
         ("excl", str(config.outputs / "AST" / "scope_BLOCK_EXCLUDE_PARENT_all.json")),
         ("incl", str(config.outputs / "AST" / "scope_BLOCK_INCLUDE_DIFF_all.json")),
     ]
+    # scope_file_specs: list[tuple[str, str]] = [
+    #     ("diff", str(config.outputs / "AST" / "scope_DIFF_BLOCK_targets.json")),
+    #     ("brother", str(config.outputs / "AST" / "scope_BROTHER_DIFF_targets.json")),
+    #     ("excl", str(config.outputs / "AST" / "scope_BLOCK_EXCLUDE_PARENT_targets.json")),
+    #     ("incl", str(config.outputs / "AST" / "scope_BLOCK_INCLUDE_DIFF_targets.json")),
+    # ]
     scope_datasets: list[tuple[str, dict[int, dict]]] = [
         (
             scope_name,
@@ -551,11 +551,11 @@ def main() -> None:
 
     # ── ID 順に結果を収集 ──
     output_records: list[dict] = []
-    bone_records: list[dict] = []
+    instruction_records: list[dict] = []
     for pid in all_program_ids:
-        output_record, bone_entry = results_map[pid]
+        output_record, instruction_entry = results_map[pid]
         output_records.append(output_record)
-        bone_records.append(bone_entry)
+        instruction_records.append(instruction_entry)
 
     # ── 結果の保存 ──
     output_path = config.outputs / "pattern" / "granularity_decided_all.json"
@@ -563,9 +563,18 @@ def main() -> None:
     hayalab.write_json(str(output_path), output_records)
     print(f"wrote {len(output_records)} entries -> {output_path}")
 
-    bone_path = config.outputs / "pattern" / "bone_granularity_decided_all.json"
-    hayalab.write_json(str(bone_path), bone_records)
-    print(f"wrote {len(bone_records)} entries -> {bone_path}")
+    bone_path = config.outputs / "pattern" / "instruction_granularity_decided_all.json"
+    hayalab.write_json(str(bone_path), instruction_records)
+    print(f"wrote {len(instruction_records)} entries -> {bone_path}")
+
+    # output_path = config.outputs / "pattern" / "granularity_decided_targets.json"
+    # output_path.parent.mkdir(parents=True, exist_ok=True)
+    # hayalab.write_json(str(output_path), output_records)
+    # print(f"wrote {len(output_records)} entries -> {output_path}")
+
+    # bone_path = config.outputs / "pattern" / "instruction_granularity_decided_targets.json"
+    # hayalab.write_json(str(bone_path), instruction_records)
+    # print(f"wrote {len(instruction_records)} entries -> {bone_path}")
 
 
 if __name__ == "__main__":
