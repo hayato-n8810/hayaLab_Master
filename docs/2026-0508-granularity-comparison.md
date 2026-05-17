@@ -42,7 +42,7 @@ OSSのJavaScriptコード変換パターン（slow→fast）について，slow�
 | score_b | diff_ratio × sibling_completeness | str_R=1 |
 | score_c | diff_ratio × block_completeness | str_R=1 |
 
-`score_c` は `score_b` の `sibling_completeness`（diff直接親ベース）を `block_completeness`（スコープ境界ベース）に置き換えたもので，分母の独立性で改善した（詳細は `docs/2026-0508-score-formula-analysis.md`）．
+`score_c` は `score_b` の `sibling_completeness`（diff直接親ベース）を `block_completeness`（スコープ境界ベース）に置き換えたもので，分母の独立性で改善した
 
 これらの共通問題：「diff周辺の構造的な文脈が揃っているか」は測れるが，  
 「diff が参照する識別子の意味がスコープ内で説明できるか」は測れていない．
