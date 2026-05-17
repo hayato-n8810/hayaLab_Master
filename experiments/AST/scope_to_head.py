@@ -1,12 +1,15 @@
-"""各粒度のASTスコープを抽出して保存する。
+"""各粒度のASTスコープを抽出して保存する（fast側）。
+
+move-tree / update-node は base_actions にのみ記録されるため，
+head_actions だけを走査するとこれらに対応する fast 側ノードが抜け落ちる．
+matches（base ↔ head のノード対応表）で head 側インデックスに変換し
+head_actions に補完してからスコープを切り出す．
 
 実行すると4種類のスコープファイルを順次生成する：
-  - scope_DIFF_BLOCK_targets.json         : 差分ノード + 配下
-  - scope_BROTHER_DIFF_targets.json       : 差分ノードの直接親の子孫
-  - scope_BLOCK_EXCLUDE_PARENT_targets.json : スコープ境界内の兄弟+差分ノードの部分木（境界自身を除く）
-  - scope_BLOCK_INCLUDE_DIFF_targets.json : スコープ境界ノードの全子孫（境界自身を含む）
-
-TODO: updateやmoveも考慮して考える（head_actionsにbase_actionsのupdateとmoveも含めて考える）
+  - scope_DIFF_BLOCK_targets.json
+  - scope_BROTHER_DIFF_targets.json
+  - scope_BLOCK_EXCLUDE_PARENT_targets.json
+  - scope_BLOCK_INCLUDE_DIFF_targets.json
 """
 
 from __future__ import annotations
@@ -19,48 +22,108 @@ from typing import Any
 from tqdm import tqdm
 
 import hayalab
-from hayalab.classes.gumtree import GumDiff
+from hayalab.classes.gumtree import GumAction, GumDiff
 from hayalab.config import PathConfig
 from hayalab.gumtree.extract import (
-    head_scope_block_exclude_parent,
-    head_scope_block_include_parent,
-    head_scope_brother,
-    head_scope_diff,
+    cut_scope_block_exclude_parent,
+    cut_scope_block_include_parent,
+    cut_scope_brother,
+    cut_scope_diff,
 )
 
 # スコープ境界とみなすノード名の集合
 SCOPE_BOUNDARY: set[str] = {
-    "program",  # トップレベルの全文（変数宣言・関数定義・式文など）
-    # "statement_block",              # 粒度が大きい（他ノードを含有しすぎる）ので除外
-    # ── ブロックレス可 制御構文 ─────────────────────────────
-    "else_clause",  # else節の本体（statement_blockまたは単文）
-    "if_statement",  # 条件部（parenthesized_expression）と then/else 本体
-    "while_statement",  # 条件部（parenthesized_expression）とループ本体
-    "do_statement",  # ループ本体と後置条件部（parenthesized_expression）
-    "with_statement",  # with対象オブジェクトと本体
-    "labeled_statement",  # ラベル付き文の本体
-    "for_in_statement",  # ループ変数・イテラブル・本体（for-in / for-of）
-    # ── switch ────────────────────────────────────────────
-    "switch_case",  # case値（string/number）と各 case 節内の文群
-    "switch_default",  # default 節内の文群
-    "switch_body",  # switch全体のcase/default節リスト（{ }を含む）
-    # ── for文（ヘッダー部と本体の両方を含む） ─────────────────
-    "for_statement",  # 初期化・条件・更新（ヘッダー）とループ本体
-    # ── 関数（アロー・式形式含む） ────────────────────────────
-    "function",  # 関数宣言・関数式の引数リストと本体（statement_block）
-    "arrow_function",  # 引数リスト・=>・本体（statement_blockまたは式）
-    "function_declaration",  # 関数名・引数リスト・本体（statement_block）
-    "function_expression",  # 無名/名前付き関数式の引数リスト・本体
-    "generator_function_declaration",  # ジェネレータ関数名・*・引数リスト・本体
-    "generator_function",  # ジェネレータ関数式の引数リスト・本体
-    # ── 例外処理 ──────────────────────────────────────────
-    "try_statement",  # try本体・catch節・finally節の全体
-    "finally_clause",  # finally節の本体（statement_block）
-    # ── クラス ────────────────────────────────────────────
-    "class_body",  # クラス内のメソッド定義・フィールド定義の列
-    "method_definition",  # メソッド名・引数リスト・本体（statement_block）
-    "class_static_block",  # static { } ブロック内の文群
+    "program",
+    "else_clause",
+    "if_statement",
+    "while_statement",
+    "do_statement",
+    "with_statement",
+    "labeled_statement",
+    "for_in_statement",
+    "switch_case",
+    "switch_default",
+    "switch_body",
+    "for_statement",
+    "function",
+    "arrow_function",
+    "function_declaration",
+    "function_expression",
+    "generator_function_declaration",
+    "generator_function",
+    "try_statement",
+    "finally_clause",
+    "class_body",
+    "method_definition",
+    "class_static_block",
 }
+
+# base_actions にのみ記録されるアクション種別
+_MOVE_UPDATE: frozenset[str] = frozenset({"move-tree", "update-node"})
+
+
+# ──────────────────────────────────────────────────────────
+# move-tree / update-node の補完
+# ──────────────────────────────────────────────────────────
+
+
+def _augmented_head_actions(gum_diff: GumDiff) -> list[GumAction]:
+    """head_actions に base 側の move-tree / update-node を補完して返す.
+
+    move-tree と update-node は base_actions にのみ記録される．
+    matches（base_index → head_index の対応表）で head 側インデックスを特定し，
+    head_actions に含まれていないものを追加する．
+
+    Args:
+        gum_diff: 差分解析結果．
+
+    Returns:
+        補完済みの head_actions リスト．
+    """
+    match_map: dict[int, int] = {b: h for b, h in gum_diff.matches}
+    head_tree_len = len(gum_diff.head_ast.tree)
+    seen: set[int] = {a.index for a in gum_diff.head_actions if a.index is not None}
+
+    extra: list[GumAction] = []
+    for action in gum_diff.base_actions:
+        if action.action not in _MOVE_UPDATE:
+            continue
+        head_idx = match_map.get(action.index)
+        if head_idx is None or not (0 <= head_idx < head_tree_len):
+            continue
+        if head_idx in seen:
+            continue
+        extra.append(
+            GumAction(
+                action=action.action,
+                tree=gum_diff.head_ast.tree[head_idx].label,
+                index=head_idx,
+            )
+        )
+        seen.add(head_idx)
+
+    return gum_diff.head_actions + extra
+
+
+# ──────────────────────────────────────────────────────────
+# スコープ抽出（GumDiff → dict）
+# ──────────────────────────────────────────────────────────
+
+
+def _head_scope_diff(gum_diff: GumDiff) -> dict[str, Any]:
+    return cut_scope_diff(gum_diff.head_ast, _augmented_head_actions(gum_diff))
+
+
+def _head_scope_brother(gum_diff: GumDiff) -> dict[str, Any]:
+    return cut_scope_brother(gum_diff.head_ast, _augmented_head_actions(gum_diff))
+
+
+def _head_scope_excl(gum_diff: GumDiff) -> dict[str, Any]:
+    return cut_scope_block_exclude_parent(gum_diff.head_ast, _augmented_head_actions(gum_diff), SCOPE_BOUNDARY)
+
+
+def _head_scope_incl(gum_diff: GumDiff) -> dict[str, Any]:
+    return cut_scope_block_include_parent(gum_diff.head_ast, _augmented_head_actions(gum_diff), SCOPE_BOUNDARY)
 
 
 # ──────────────────────────────────────────────────────────
@@ -78,19 +141,19 @@ def _wrap(item: dict[str, Any], extract_fn: Callable[[GumDiff], dict[str, Any]])
 
 
 def _process_diff(item: dict[str, Any]) -> dict[str, Any]:
-    return _wrap(item, head_scope_diff)
+    return _wrap(item, _head_scope_diff)
 
 
 def _process_brother(item: dict[str, Any]) -> dict[str, Any]:
-    return _wrap(item, head_scope_brother)
+    return _wrap(item, _head_scope_brother)
 
 
 def _process_exclude_parent(item: dict[str, Any]) -> dict[str, Any]:
-    return _wrap(item, lambda gd: head_scope_block_exclude_parent(gd, SCOPE_BOUNDARY))
+    return _wrap(item, _head_scope_excl)
 
 
 def _process_include_parent(item: dict[str, Any]) -> dict[str, Any]:
-    return _wrap(item, lambda gd: head_scope_block_include_parent(gd, SCOPE_BOUNDARY))
+    return _wrap(item, _head_scope_incl)
 
 
 # ──────────────────────────────────────────────────────────
@@ -113,7 +176,9 @@ def _run(
 if __name__ == "__main__":
     config = PathConfig()
 
-    input_path = config.data / "test_data" / "MBDiff_target.json"
+    # input_path = config.data / "test_data" / "MBDiff_target.json"
+    input_path = config.processed / "MBDiff.json"
+
     if not input_path.exists():
         raise FileNotFoundError(f"入力ファイルが見つかりません: {input_path}")
 
@@ -127,22 +192,22 @@ if __name__ == "__main__":
     tasks: list[tuple[str, Any, Callable]] = [
         (
             "scope_DIFF_BLOCK",
-            config.outputs / "AST_HEAD" / "scope_DIFF_BLOCK_targets.json",
+            config.outputs / "AST_HEAD" / "scope_DIFF_BLOCK_all.json",
             _process_diff,
         ),
         (
             "scope_BROTHER_DIFF",
-            config.outputs / "AST_HEAD" / "scope_BROTHER_DIFF_targets.json",
+            config.outputs / "AST_HEAD" / "scope_BROTHER_DIFF_all.json",
             _process_brother,
         ),
         (
             "scope_BLOCK_EXCLUDE_PARENT",
-            config.outputs / "AST_HEAD" / "scope_BLOCK_EXCLUDE_PARENT_targets.json",
+            config.outputs / "AST_HEAD" / "scope_BLOCK_EXCLUDE_PARENT_all.json",
             _process_exclude_parent,
         ),
         (
             "scope_BLOCK_INCLUDE_DIFF",
-            config.outputs / "AST_HEAD" / "scope_BLOCK_INCLUDE_DIFF_targets.json",
+            config.outputs / "AST_HEAD" / "scope_BLOCK_INCLUDE_DIFF_all.json",
             _process_include_parent,
         ),
     ]

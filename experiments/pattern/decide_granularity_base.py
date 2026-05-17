@@ -520,6 +520,7 @@ def main() -> None:
     #     ("excl", str(config.outputs / "AST" / "scope_BLOCK_EXCLUDE_PARENT_targets.json")),
     #     ("incl", str(config.outputs / "AST" / "scope_BLOCK_INCLUDE_DIFF_targets.json")),
     # ]
+
     scope_datasets: list[tuple[str, dict[int, dict]]] = [
         (
             scope_name,
@@ -558,6 +559,7 @@ def main() -> None:
         instruction_records.append(instruction_entry)
 
     # ── 結果の保存 ──
+    # 全データ版slow
     output_path = config.outputs / "pattern" / "granularity_decided_all.json"
     output_path.parent.mkdir(parents=True, exist_ok=True)
     hayalab.write_json(str(output_path), output_records)
@@ -567,6 +569,7 @@ def main() -> None:
     hayalab.write_json(str(bone_path), instruction_records)
     print(f"wrote {len(instruction_records)} entries -> {bone_path}")
 
+    # ターゲットデータ版 slow
     # output_path = config.outputs / "pattern" / "granularity_decided_targets.json"
     # output_path.parent.mkdir(parents=True, exist_ok=True)
     # hayalab.write_json(str(output_path), output_records)
