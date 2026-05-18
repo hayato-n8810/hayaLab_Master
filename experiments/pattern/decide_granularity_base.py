@@ -188,8 +188,8 @@ def _is_single_trivial_terminal(nodes: list[dict]) -> bool:
         if re.match(r"([^ ]+): (.+)", node["label"]):
             terminals.append(node)
 
-    # 2 個以上トークンがあれば除外対象外
-    if len(terminals) > 1:
+    # トークンが1つのみの場合フィルタリング対象あれば除外対象外
+    if len(terminals) != 1:
         return False
 
     node = terminals[0]
