@@ -84,9 +84,6 @@ _MEANINGLESS_TERMINAL_VALUES: frozenset[str] = frozenset(
         "-",
         "*",
         "/",
-        "var",
-        "let",
-        "const",
     }
 )
 
@@ -171,36 +168,50 @@ def collect_candidates(
     return candidates
 
 
-def _has_meaningful_terminal(nodes: list[dict]) -> bool:
-    """ノードリストに有意な終端トークンが1つ以上含まれるか判定する.
+def _is_single_trivial_terminal(nodes: list[dict]) -> bool:
+    """ノードリストが単一の trivial terminal のみで構成されるか判定する.
 
-    以下を全て除いて有意なトークンが残らない場合は False を返す：
+    終端ノード（label が "name: value" 形式のノード）の個数を数え，
+    ちょうど 1 個で，かつそれが以下のいずれかに該当する場合のみ True を返す：
       - node name が _MEANINGLESS_NODE_NAMES に含まれる
       - value が抽象化変数プレフィックス（VAR_*, FUNCTION_*, KEY_*）で始まる
       - value が _MEANINGLESS_TERMINAL_VALUES に含まれる
       - value が空白のみ
+
+    終端ノードが 2 個以上ある候補は，たとえ全てが上記に該当しても False を返す
+    （= 除外しない）．
+    終端ノードが 0 個の候補も False（= 除外しない）．
     """
+    # 終端ノードのみ抽出
+    terminals: list[dict] = []
     for node in nodes:
-        # 終端ノードでなければスキップ
-        if not re.match(r"([^ ]+): (.+)", node["label"]):
-            continue
-        if node["name"] in _MEANINGLESS_NODE_NAMES:
-            continue
-        value = node["value"]
-        if value.startswith(_ABSTRACT_VALUE_PREFIXES):
-            continue
-        if value in _MEANINGLESS_TERMINAL_VALUES:
-            continue
-        if not value.strip():
-            continue
-        return True  # 有意なトークンが見つかった
+        if re.match(r"([^ ]+): (.+)", node["label"]):
+            terminals.append(node)
+
+    # 2 個以上トークンがあれば除外対象外
+    if len(terminals) > 1:
+        return False
+
+    node = terminals[0]
+    if node["name"] in _MEANINGLESS_NODE_NAMES:
+        return True
+    value = node["value"]
+    if value.startswith(_ABSTRACT_VALUE_PREFIXES):
+        return True
+    if value in _MEANINGLESS_TERMINAL_VALUES:
+        return True
+    if not value.strip():
+        return True
     return False
 
 
 def filter_symbolic_candidates(candidates: list[dict]) -> list[dict]:
-    """有意な終端トークンを持たない（記号・キーワードのみの）候補を除外する.
+    """単一の trivial terminal のみで構成される候補を除外する.
 
-    差分が括弧や演算子のみで構成されている場合は str_R の判定ができないため排除する
+    終端ノードが 1 個だけで，かつそれがフィルタ定数のいずれか
+    （_MEANINGLESS_NODE_NAMES / _ABSTRACT_VALUE_PREFIXES /
+    _MEANINGLESS_TERMINAL_VALUES / 空白）に該当する候補のみを排除する．
+    複数の終端ノードを持つ候補は全て保持される．
 
     Args:
         candidates: collect_candidates の結果
@@ -208,7 +219,7 @@ def filter_symbolic_candidates(candidates: list[dict]) -> list[dict]:
     Returns:
         フィルタ後の候補リスト
     """
-    return [c for c in candidates if _has_meaningful_terminal(c["nodes"])]
+    return [c for c in candidates if not _is_single_trivial_terminal(c["nodes"])]
 
 
 def deduplicate_candidates(candidates: list[dict]) -> list[dict]:
