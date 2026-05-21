@@ -11,12 +11,12 @@ from .others import (
     NewExpressionExtractor,
     PropertyIdentifierExtractor,
     WhileStatementExtractor,
-    extract_diff_features,
+    # extract_diff_features,
 )
 
 __all__ = [
     "integrate_features",
-    "extract_diff_features",
+    # "extract_diff_features",
     "ExtractionContext",
     "FeatureExtractor",
     "ForInStatementExtractor",

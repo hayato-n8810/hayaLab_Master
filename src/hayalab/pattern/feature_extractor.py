@@ -27,7 +27,7 @@ _DEFAULT_EXTRACTORS: list[FeatureExtractor] = [
 ]
 
 
-def extract_diff_features(
+def extract_diff_features_depricated(
     diff_block: list[ASTNode],
     extractors: list[FeatureExtractor] | None = None,
 ) -> SyntaxFeature:
