@@ -98,6 +98,10 @@ def main() -> None:
                     "diff_node_indices": set(cut_dict["diff_node_indices"]),
                 }
             )
+            if not cutout.node_indices:
+                # 差分アクションが空 / index が無効な MB は depth ごと Cutout が空になる。
+                # Stage 1 仕様（cutout.py: 空 Cutout を返す）に合わせて、ここではスキップする。
+                continue
             for abst_level in (0, 1, 2, 3):
                 pattern = abstract_cutout(cutout, ast, abst_level)
                 patterns_by_level[str(abst_level)].append(pattern.model_dump(mode="json"))
