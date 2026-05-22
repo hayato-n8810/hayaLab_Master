@@ -63,7 +63,8 @@ uv run ruff format src/                          # format
 | `.agent/prompts/` | 再利用プロンプト集（`bug-investigation`, `implementation-plan` 等） | ユーザーが明示的に参照を求めた時 |
 | `.agent/skills/` | 再利用スキル定義（複数ステップの手順） | ユーザーがスキル名で呼び出した時 |
 | `.agent/agents/` | Claude Code サブエージェント定義 | Claude Code が自動読み込み |
-| `.agent/plans/` | 計画書の出力先（`YYYY-MM-DD-<topic>.md` 形式） | 計画作成を求められた時に書き出す |
+| `.agent/plans/` | 計画書の出力先（`{仕様書ファイル名}/PLAN.md` 形式） | 計画作成を求められた時に書き出す |
+| `.agent/docs/` | 実装仕様書置き場（Markdown のみ） | `architect` サブエージェントが読み込む |
 
 ### Tool-specific Entry Points
 
@@ -79,14 +80,34 @@ uv run ruff format src/                          # format
 Claude Code はこのプロジェクトで以下の機能を持つ。
 
 **Subagents** (`.agent/agents/` = `.claude/agents/` via symlink)
-- `test-writer` — `src/hayalab/` のモジュールに対する pytest を自動生成
-- `code-reviewer` — 境界規約・API安定性・再現性・Ruff準拠を優先度順にレビュー
+
+| エージェント | モデル | 役割 |
+|---|---|---|
+| `architect` | Opus | `.agent/docs/` の仕様書を読んで `.agent/plans/{topic}/PLAN.md` を作成 |
+| `implementer` | Sonnet（inherit） | `PLAN.md` を読んでコードを実装 |
+| `test-writer` | — | `src/hayalab/` のモジュールに対する pytest を自動生成 |
+| `code-reviewer` | — | 境界規約・API安定性・再現性・Ruff準拠を優先度順にレビュー |
 
 **Hooks** (`.claude/hooks/`)
 - Python ファイル編集後に `ruff check --fix` + `ruff format` を自動実行
 
 **Skills** (`.agent/skills/`)
 - `codeql-regression-check` — CodeQL クエリ変更の precision/recall リスクをレビュー
+
+#### Opus–Sonnet オーケストレーション
+
+`.agent/docs/` に仕様書を置き、以下のように依頼するだけで Opus が計画を立て Sonnet が実装する：
+
+```
+> .agent/docs/{仕様書}.md の仕様を読んで実装して
+```
+
+モデル構成：
+- メインセッション：`claude --model claude-opus-4-6` で起動
+- `architect` サブエージェント：`model: opus`（frontmatter で明示固定）
+- `implementer` サブエージェント：`model: inherit`（`.claude/settings.json` の `env.CLAUDE_CODE_SUBAGENT_MODEL` を参照）
+
+セットアップ詳細は `.agent/skills/opus-orchestrated-implementation/SKILL.md` を参照。
 
 ---
 
