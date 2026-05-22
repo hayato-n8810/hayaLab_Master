@@ -90,17 +90,17 @@ def main() -> None:
         ast = diff.base_ast
 
         patterns_by_level: dict[str, list[dict]] = {"0": [], "1": [], "2": [], "3": []}
-        for depth_str, cuts in entry["cutouts"].items():
-            for cut_dict in cuts:
-                cutout = Cutout.model_validate(
-                    {
-                        **cut_dict,
-                        "diff_node_indices": set(cut_dict["diff_node_indices"]),
-                    }
-                )
-                for abst_level in (0, 1, 2, 3):
-                    pattern = abstract_cutout(cutout, ast, abst_level)
-                    patterns_by_level[str(abst_level)].append(pattern.model_dump(mode="json"))
+        # entry["cutouts"] は { "1": Cutout, "2": Cutout, ... } の dict（1 depth = 1 Cutout）
+        for cut_dict in entry["cutouts"].values():
+            cutout = Cutout.model_validate(
+                {
+                    **cut_dict,
+                    "diff_node_indices": set(cut_dict["diff_node_indices"]),
+                }
+            )
+            for abst_level in (0, 1, 2, 3):
+                pattern = abstract_cutout(cutout, ast, abst_level)
+                patterns_by_level[str(abst_level)].append(pattern.model_dump(mode="json"))
 
         results.append({"mb_id": mb_id, "patterns": patterns_by_level})
 

@@ -1,12 +1,12 @@
 """パターン抽出パイプライン Stage 5a: サイズスコアリング (ρ, σ, S)。
 
-同一 MB・同一 depth の Cutout 群を入力に取り、Diff Density Ratio (ρ) と
+1 MB × 1 depth につき 1 つの Cutout を入力に取り、Diff Density Ratio (ρ) と
 Normalized Node Count (σ) を計算し、統合サイズスコア S(L) = w·ρ + (1-w)·σ を返す。
 
 公開 API:
-    - compute_rho(cutouts): float
-    - compute_sigma(cutouts, n_max): float
-    - compute_size_score(cutouts, n_max, weight_w): SizeScore
+    - compute_rho(cutout): float
+    - compute_sigma(cutout, n_max): float
+    - compute_size_score(cutout, n_max, weight_w): SizeScore
 """
 
 from __future__ import annotations
@@ -14,31 +14,30 @@ from __future__ import annotations
 from hayalab.classes.pattern import Cutout, SizeScore
 
 
-def compute_rho(cutouts: list[Cutout]) -> float:
+def compute_rho(cutout: Cutout) -> float:
     """Diff Density Ratio を計算する。
 
-    ρ(L) = sum(|Δ ∩ N(L)|) / sum(|N(L)|)（同一 MB・同一 depth 内で集計）。
+    ρ(L) = |Δ ∩ N(L)| / |N(L)|。
 
     Args:
-        cutouts: 同一 MB・同一 depth から得られた Cutout のリスト。
+        cutout: 同一 MB・同一 depth の Cutout。
 
     Returns:
-        rho ∈ [0, 1]。cutouts が空または総ノード数 0 のときは 0.0。
+        rho ∈ [0, 1]。総ノード数 0 のときは 0.0。
     """
-    total_nodes = sum(len(c.node_indices) for c in cutouts)
+    total_nodes = len(cutout.node_indices)
     if total_nodes == 0:
         return 0.0
-    diff_nodes = sum(len(c.diff_node_indices) for c in cutouts)
-    return diff_nodes / total_nodes
+    return len(cutout.diff_node_indices) / total_nodes
 
 
-def compute_sigma(cutouts: list[Cutout], n_max: int) -> float:
+def compute_sigma(cutout: Cutout, n_max: int) -> float:
     """Normalized Node Count を計算する。
 
-    σ(L) = sum(|c.node_indices| for c in cutouts) / n_max。
+    σ(L) = |N(L)| / n_max。
 
     Args:
-        cutouts: 同一 MB・同一 depth から得られた Cutout のリスト。
+        cutout: 同一 MB・同一 depth の Cutout。
         n_max: 同一 MB の 4 depth 中で最大のノード数（呼び出し側で算出）。
 
     Returns:
@@ -46,19 +45,18 @@ def compute_sigma(cutouts: list[Cutout], n_max: int) -> float:
     """
     if n_max <= 0:
         return 0.0
-    total_nodes = sum(len(c.node_indices) for c in cutouts)
-    return total_nodes / n_max
+    return len(cutout.node_indices) / n_max
 
 
 def compute_size_score(
-    cutouts: list[Cutout],
+    cutout: Cutout,
     n_max: int,
     weight_w: float,
 ) -> SizeScore:
     """統合サイズスコア S(L) = w·ρ + (1-w)·σ を計算する。
 
     Args:
-        cutouts: 同一 MB・同一 depth の Cutout 群。
+        cutout: 同一 MB・同一 depth の Cutout。
         n_max: 同一 MB の 4 depth 中で最大のノード数。
         weight_w: ρ への重み w ∈ [0, 1]。
 
@@ -70,7 +68,7 @@ def compute_size_score(
     """
     if not (0.0 <= weight_w <= 1.0):
         raise ValueError(f"weight_w must be in [0, 1], got {weight_w}")
-    rho = compute_rho(cutouts)
-    sigma = compute_sigma(cutouts, n_max)
+    rho = compute_rho(cutout)
+    sigma = compute_sigma(cutout, n_max)
     score = weight_w * rho + (1.0 - weight_w) * sigma
     return SizeScore(rho=rho, sigma=sigma, score=score, weight_w=weight_w)

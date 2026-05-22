@@ -1,12 +1,18 @@
 """パターン抽出パイプライン Stage 2: 抽象化 (A0, A1, A2, A3)。
 
-切り出し結果 (`Cutout`) と抽象化レベル (0..3) を受け取り、`Pattern` を返す。
+抽象化レベルを 2 軸 × 2 値の組合せで定義する:
 
-抽象化レベル定義:
-    - A0: データセット時点の表現を維持（識別子は VAR_n 既存正規化のまま、リテラル不変）
-    - A1: 差分ノード集合 Δ の外側のリテラルのみを型クラス化（NUM, STR, BOOL, NULL, REGEX）
-    - A2: A1 + R2-1 (Function 統一) + R2-3 (formal_parameters variadic) + R2-4 (VariableDeclaration 統一)
-    - A3: A2 + Δ 内のリテラルも型クラス化
+| level | bits | literal_generalize | gap_tolerant | クローン型相当 |
+|---|---|---|---|---|
+| A0 | 0b00 | False | False | Type-1 |
+| A1 | 0b01 | False | True  | Type-3 (構造のみ寛容) |
+| A2 | 0b10 | True  | False | Type-2 |
+| A3 | 0b11 | True  | True  | Type-3 (Type-2 + 構造寛容) |
+
+- 軸1 (literal_generalize) = `abst_level >> 1`: 値レベルの汎化
+    - リテラル (number, string, true/false, null/undefined, regex) を型クラスに置換
+    - 識別子のマッチ規則: A0/A1 = 元値完全一致、A2/A3 = プレフィクスのみ一致 (detect 側で実装)
+- 軸2 (gap_tolerant) = `abst_level & 1`: マッチング側の寛容さ（detect 側で実装）
 
 公開 API:
     - abstract_cutout(cutout, ast, abst_level): Pattern
@@ -21,12 +27,9 @@ import json
 from hayalab.classes.gumtree import AST, ASTNode
 from hayalab.classes.pattern import Cutout, Pattern
 from hayalab.config.pattern_config import (
-    FUNCTION_NODE_TYPES,
     IDENTIFIER_NODE_TYPES,
     IDENTIFIER_PREFIXES,
     LITERAL_TYPE_MAP,
-    VARIABLE_DECLARATION_NODE_TYPES,
-    VARIADIC_NODE_TYPES,
 )
 
 
@@ -45,12 +48,6 @@ def _is_terminal_node(node: ASTNode) -> bool:
     という形式の label を持ち、非終端ノードは `"name [begin,end]"` のみで `: value`
     の部分を持たない。記号類 (`(`, `;`, `=` 等) は `name == value` だが `label` に
     `: value` 部分があるため終端として識別される。
-
-    Args:
-        node: ASTNode。
-
-    Returns:
-        終端ノードなら True。
     """
     return node.label.startswith(f"{node.name}: ")
 
@@ -58,8 +55,7 @@ def _is_terminal_node(node: ASTNode) -> bool:
 def _abstract_node(
     idx: int,
     node: ASTNode,
-    in_diff: bool,
-    abst_level: int,
+    literal_generalize: bool,
     slot_lookup: dict[str, int],
 ) -> dict:
     """単一ノードを抽象化レベルに従って template dict に変換する。
@@ -67,8 +63,7 @@ def _abstract_node(
     Args:
         idx: 元 AST における node の index。
         node: 元 ASTNode。
-        in_diff: 差分ノード集合 Δ に含まれるか。
-        abst_level: 抽象化レベル (0..3)。
+        literal_generalize: True ならリテラルを型クラスに置換する（A2/A3 相当）。
         slot_lookup: original_value → slot_id のマップ（呼び出し側で構築・更新）。
 
     Returns:
@@ -79,47 +74,30 @@ def _abstract_node(
     slot_id: int | None = None
     prefix: str | None = None
     original_value: str | None = None
-    variadic = False
+    is_terminal = _is_terminal_node(node)
 
-    # ── 識別子: A0–A3 共通で slot_id/prefix/original_value を保持 ─────────
+    # ── 識別子: 全レベルで slot_id/prefix/original_value を保持（マッチ規則は detect 側で分岐） ──
     if name in IDENTIFIER_NODE_TYPES:
         prefix = _detect_identifier_prefix(value)
         if prefix is not None:
             original_value = value
             slot_id = slot_lookup.setdefault(value, len(slot_lookup) + 1)
 
-    # ── リテラル汎化 (A1 / A3) ────────────────────────────────────────
-    elif name in LITERAL_TYPE_MAP:
+    # ── リテラル汎化 (A2/A3 = literal_generalize=True) ──
+    elif literal_generalize and name in LITERAL_TYPE_MAP:
         abstract_label = LITERAL_TYPE_MAP[name]
-        if abst_level >= 3 or (abst_level >= 1 and not in_diff):
-            name = abstract_label
-            value = abstract_label
+        name = abstract_label
+        value = abstract_label
 
-    # ── 関数・宣言系の正規化 (A2 / A3) ────────────────────────────────
-    # 終端の `function` キーワード（`function: function [...]`）と非終端 `function`
-    # ノードは name が衝突するため、is_terminal 判定で非終端のみを正規化対象とする。
-    is_terminal_node = _is_terminal_node(node)
-    if abst_level >= 2 and not is_terminal_node:
-        if node.name in FUNCTION_NODE_TYPES:
-            name = "Function"
-            value = "Function"
-        elif node.name in VARIABLE_DECLARATION_NODE_TYPES:
-            name = "VariableDeclaration"
-            value = "VariableDeclaration"
-        if node.name in VARIADIC_NODE_TYPES:
-            variadic = True
-
-    template_node: dict = {
+    return {
         "origin_index": idx,
         "name": name,
         "value": value,
         "slot_id": slot_id,
         "prefix": prefix,
         "original_value": original_value,
-        "variadic": variadic,
-        "is_terminal": is_terminal_node,
+        "is_terminal": is_terminal,
     }
-    return template_node
 
 
 def compute_signature(ast_template: list[dict]) -> str:
@@ -139,7 +117,6 @@ def compute_signature(ast_template: list[dict]) -> str:
                 "value": tn["value"],
                 "parent_relative": tn.get("parent_relative", []),
                 "slot_id": tn.get("slot_id"),
-                "variadic": tn.get("variadic", False),
             }
         )
     payload = json.dumps(serializable, sort_keys=True, ensure_ascii=False)
@@ -148,6 +125,10 @@ def compute_signature(ast_template: list[dict]) -> str:
 
 def abstract_cutout(cutout: Cutout, ast: AST, abst_level: int) -> Pattern:
     """切り出しに抽象化を適用してパターンを生成する。
+
+    abst_level のビット解釈:
+        - bit 1 (literal_generalize): リテラルを型クラスに置換、識別子は prefix-only マッチ
+        - bit 0 (gap_tolerant): 子マッチを gap-tolerant 化（detect 側で参照）
 
     Args:
         cutout: 切り出し結果。
@@ -165,9 +146,9 @@ def abstract_cutout(cutout: Cutout, ast: AST, abst_level: int) -> Pattern:
     if not cutout.node_indices:
         raise ValueError("Cutout has no node_indices")
 
+    literal_generalize = bool(abst_level >> 1)
     tree = ast.tree
     node_indices = cutout.node_indices
-    diff_set = cutout.diff_node_indices
 
     # 元 AST index → cutout 内 local index (出現順)
     index_to_local: dict[int, int] = {idx: i for i, idx in enumerate(node_indices)}
@@ -177,11 +158,9 @@ def abstract_cutout(cutout: Cutout, ast: AST, abst_level: int) -> Pattern:
 
     ast_template: list[dict] = []
     for idx in node_indices:
-        node = tree[idx]
-        in_diff = idx in diff_set
-        tn = _abstract_node(idx, node, in_diff, abst_level, slot_lookup)
+        tn = _abstract_node(idx, tree[idx], literal_generalize, slot_lookup)
         # 元 AST の parent 列を Cutout 内 local index 列にマップ（Cutout 外の祖先は除外）
-        tn["parent_relative"] = [index_to_local[p] for p in node.parent if p in index_to_local]
+        tn["parent_relative"] = [index_to_local[p] for p in tree[idx].parent if p in index_to_local]
         ast_template.append(tn)
 
     signature = compute_signature(ast_template)

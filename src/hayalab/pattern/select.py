@@ -16,31 +16,26 @@ from hayalab.pattern.scoring import compute_size_score
 
 def select_optimal_depth(
     mb_id: int,
-    cutouts_by_depth: dict[int, list[Cutout]],
+    cutouts_by_depth: dict[int, Cutout],
     weight_w: float = DEFAULT_WEIGHT_W,
 ) -> SelectionResult:
     """MB ごとに最適な depth L* をサイズスコアで選択する。
 
     アルゴリズム:
-        1. n_max = max over L of sum(|c.node_indices| for c in cutouts_by_depth[L])
+        1. n_max = max over L of |c.node_indices| (cutouts_by_depth[L])
         2. 各 depth L で compute_size_score(...) を計算
         3. L* = argmax_L score。同点は最小 L をタイブレーク（Occam's razor）。
-        4. 全 depth で cutouts が空、または n_max == 0 の場合は "unrepresentable"。
+        4. 全 depth で cutout が空、または n_max == 0 の場合は "unrepresentable"。
 
     Args:
         mb_id: 対象 MB の id。
-        cutouts_by_depth: depth (1..4) -> Cutout リスト。
+        cutouts_by_depth: depth (1..4) -> Cutout の単一インスタンス。
         weight_w: ρ への重み w ∈ [0, 1]。
 
     Returns:
         SelectionResult。optimal_abst_level は呼び出し側で埋める前提のため None。
     """
-    # n_max を算出
-    n_max = 0
-    for cutouts in cutouts_by_depth.values():
-        n = sum(len(c.node_indices) for c in cutouts)
-        if n > n_max:
-            n_max = n
+    n_max = max((len(c.node_indices) for c in cutouts_by_depth.values()), default=0)
 
     if n_max == 0:
         return SelectionResult(
@@ -55,10 +50,10 @@ def select_optimal_depth(
     best_depth: int | None = None
     best_score: float = -1.0
     for depth in sorted(cutouts_by_depth.keys()):
-        cutouts = cutouts_by_depth[depth]
-        if not cutouts:
+        cutout = cutouts_by_depth[depth]
+        if not cutout.node_indices:
             continue
-        score = compute_size_score(cutouts, n_max, weight_w).score
+        score = compute_size_score(cutout, n_max, weight_w).score
         if score > best_score:
             best_score = score
             best_depth = depth

@@ -3,8 +3,7 @@
 `SCOPE_BOUNDARY` は L3/L4 の境界判定にのみ用いる。`statement_block` を意図的に除外しているため、
 `if (cond) { ... }` であれば L4 = `if_statement` となり、`statement_block` 中身ではない。
 
-抽象化用のリテラル種別マップ、識別子プレフィクスマップ、関数系・宣言系の正規化対象ノード型集合も
-ここに定義し、`abstraction.py` と `detect.py` から共通参照する。
+抽象化用のリテラル種別マップ、識別子プレフィクスマップを定義する。
 """
 
 from __future__ import annotations
@@ -52,7 +51,7 @@ SCOPE_BOUNDARY: set[str] = {
 # 抽象化用ラベル: tree-sitter JS の named ノード型 → 抽象クラス
 # ──────────────────────────────────────────────────────────
 
-# A1/A3 でリテラルを汎化する対象。
+# A2/A3 (literal_generalize=True) でリテラルを汎化する対象。
 LITERAL_TYPE_MAP: dict[str, str] = {
     "number": "NUM",
     "string": "STR",
@@ -64,25 +63,6 @@ LITERAL_TYPE_MAP: dict[str, str] = {
     "undefined": "NULL",
     "regex": "REGEX",
 }
-
-# A2 (R2-1): 関数系ノードを統一ラベル `Function` に正規化する対象。
-FUNCTION_NODE_TYPES: set[str] = {
-    "function",
-    "function_declaration",
-    "function_expression",
-    "arrow_function",
-    "generator_function",
-    "generator_function_declaration",
-}
-
-# A2 (R2-4): 変数宣言種別を統一ラベル `VariableDeclaration` に正規化する対象。
-VARIABLE_DECLARATION_NODE_TYPES: set[str] = {
-    "variable_declaration",
-    "lexical_declaration",
-}
-
-# A2 (R2-3): variadic マッチングを許容する子要素を持つノード型。
-VARIADIC_NODE_TYPES: set[str] = {"formal_parameters"}
 
 
 # ──────────────────────────────────────────────────────────

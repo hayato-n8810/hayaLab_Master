@@ -14,20 +14,26 @@ from pydantic import BaseModel, Field
 
 
 class Cutout(BaseModel):
-    """単一の切り出し結果。
+    """単一の切り出し結果（1 MB × 1 depth で必ず 1 個）。
+
+    複数の差分アクション（delete-tree / insert-tree / move-tree / update-node）が
+    存在する場合も、それらを統合した「1 つの ASTNode リスト」として保持する。
+    元 AST における配列インデックス昇順で並ぶ。
 
     Attributes:
         mb_id: 由来 MB の id（MBDiff の id フィールドそのもの）。
         depth: 切り出し depth (1, 2, 3, 4)。
-        root_index: 元 AST における切り出し根ノードの配列インデックス。
-        node_indices: 切り出し部分木に含まれる AST ノードの配列インデックスを昇順に並べたリスト。
+        root_indices: 差分アクションごとに決定された根ノード index を昇順で保持
+            （重複排除済み）。複数アクションが同じ根に収束した場合は 1 つになる。
+        node_indices: 切り出し部分木に含まれる AST ノードの配列インデックスを
+            昇順に並べたリスト（全アクションの和集合）。
         diff_node_indices: 上記のうち差分ノード（GumTree が変更点として検出したノード）に
             該当するインデックスの集合。
     """
 
     mb_id: int
     depth: int
-    root_index: int
+    root_indices: list[int]
     node_indices: list[int]
     diff_node_indices: set[int] = Field(default_factory=set)
 
@@ -51,6 +57,10 @@ class IdentifierSlot(BaseModel):
 class Pattern(BaseModel):
     """検出可能なパターン表現。
 
+    抽象化レベル `abst_level` は 2 軸 × 2 値の組合せで以下の意味を持つ:
+        - bit 1 (literal_generalize = abst_level >> 1): リテラル汎化と識別子マッチ規則
+        - bit 0 (gap_tolerant = abst_level & 1): 子マッチを gap-tolerant 化（detect 側で参照）
+
     Attributes:
         mb_id: 由来 MB の id（複数 MB から生成された同一パターンは別オブジェクト）。
         depth: 切り出し depth。
@@ -58,7 +68,7 @@ class Pattern(BaseModel):
         ast_template: 抽象化適用後の AST テンプレート。各要素は
             {"name": str, "value": str, "parent_relative": list[int],
              "slot_id": int | None, "prefix": str | None, "original_value": str | None,
-             "variadic": bool, "is_terminal": bool}。
+             "is_terminal": bool}。
             識別子ノードは slot_id を持ち、同一識別子の複数出現を結びつける。
         signature: パターン同一性判定用のハッシュ文字列（決定論的、ast_template から計算）。
             同じ AST テンプレートを持つパターンは同じ値を取る、内部キー。

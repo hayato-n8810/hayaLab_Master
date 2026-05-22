@@ -71,20 +71,16 @@ def main() -> None:
     results: list[dict] = []
     for entry in cutouts_data:
         mb_id = entry["mb_id"]
-        cutouts_by_depth: dict[int, list[Cutout]] = {}
-        for depth_str, cuts in entry["cutouts"].items():
-            cutouts_by_depth[int(depth_str)] = [cutout_from_dict(c) for c in cuts]
+        # entry["cutouts"] は { "1": Cutout, "2": Cutout, ... } の dict（1 depth = 1 Cutout）
+        cutouts_by_depth: dict[int, Cutout] = {int(depth_str): cutout_from_dict(cut_dict) for depth_str, cut_dict in entry["cutouts"].items()}
 
-        # 各 depth でサイズスコアを計算（n_max は同 MB 内の最大）
-        n_max = max(
-            (sum(len(c.node_indices) for c in cuts) for cuts in cutouts_by_depth.values()),
-            default=0,
-        )
+        # 各 depth でサイズスコアを計算（n_max は同 MB 内 4 depth の最大ノード数）
+        n_max = max((len(c.node_indices) for c in cutouts_by_depth.values()), default=0)
         size_scores: dict[str, dict] = {}
-        for depth, cuts in sorted(cutouts_by_depth.items()):
-            if not cuts:
+        for depth, cutout in sorted(cutouts_by_depth.items()):
+            if not cutout.node_indices:
                 continue
-            score = compute_size_score(cuts, n_max if n_max > 0 else 1, args.weight_w)
+            score = compute_size_score(cutout, n_max if n_max > 0 else 1, args.weight_w)
             size_scores[str(depth)] = score.model_dump(mode="json")
 
         selection = select_optimal_depth(mb_id, cutouts_by_depth, weight_w=args.weight_w)

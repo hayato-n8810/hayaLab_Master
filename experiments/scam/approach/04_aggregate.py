@@ -101,14 +101,15 @@ def main() -> None:
                 if p is None:
                     continue
                 # 終端記号列の抽出: is_terminal=True のノードを順に取り出し、
-                # 識別子は abst_level に応じた表現（A0..A2: 元値、A3: PREFIX_* 形）、
+                # 識別子は abst_level に応じた表現（literal_generalize=False: 元値、True: PREFIX_* 形）、
                 # その他終端（記号・キーワード・抽象リテラル）は value をそのまま使う。
+                literal_generalize = bool(p.abst_level >> 1)
                 terminal_tokens: list[str] = []
                 for tn in p.ast_template:
                     if not tn.get("is_terminal", False):
                         continue
                     if tn.get("slot_id") is not None and tn.get("prefix") is not None:
-                        if p.abst_level >= 3:
+                        if literal_generalize:
                             terminal_tokens.append(f"{tn['prefix']}_*")
                         else:
                             terminal_tokens.append(tn.get("original_value") or tn["value"])

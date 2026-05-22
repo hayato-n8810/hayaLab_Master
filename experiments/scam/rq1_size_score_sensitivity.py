@@ -62,11 +62,11 @@ def main() -> None:
     cutouts_data = hayalab.read_json(str(cutouts_path))
     print(f"[RECORDS] {len(cutouts_data)}", flush=True)
 
-    # 全 MB の depth 別 cutouts を Pydantic 復元
-    cutouts_by_mb: dict[int, dict[int, list[Cutout]]] = {}
+    # 全 MB の depth 別 cutouts を Pydantic 復元（1 depth = 1 Cutout）
+    cutouts_by_mb: dict[int, dict[int, Cutout]] = {}
     for entry in cutouts_data:
         mb_id = entry["mb_id"]
-        cutouts_by_mb[mb_id] = {int(depth_str): [cutout_from_dict(c) for c in cuts] for depth_str, cuts in entry["cutouts"].items()}
+        cutouts_by_mb[mb_id] = {int(depth_str): cutout_from_dict(cut_dict) for depth_str, cut_dict in entry["cutouts"].items()}
 
     with csv_path.open("w", encoding="utf-8", newline="") as f:
         writer = csv.writer(f)
@@ -96,11 +96,11 @@ def main() -> None:
                     continue
                 d = sel.optimal_depth
                 depth_counts[d] += 1
-                cuts = cutouts_by_depth[d]
-                n_max = max(sum(len(c.node_indices) for c in cb) for cb in cutouts_by_depth.values()) or 1
-                score = compute_size_score(cuts, n_max, w)
+                cutout = cutouts_by_depth[d]
+                n_max = max((len(c.node_indices) for c in cutouts_by_depth.values()), default=0) or 1
+                score = compute_size_score(cutout, n_max, w)
                 rhos.append(score.rho)
-                sizes.append(sum(len(c.node_indices) for c in cuts))
+                sizes.append(len(cutout.node_indices))
 
             total = sum(depth_counts.values()) + unrepresentable
             denom = max(total, 1)

@@ -1,10 +1,20 @@
 """パターン抽出パイプライン Stage 1: 切り出し (L1, L2, L3, L4)。
 
 GumTree 差分 (`GumDiff`) と depth (1..4) を受け取り、差分ノード集合を含む部分木を
-`Cutout` として返す。複数の差分アクションが同一の根ノードに収束する場合は統合する。
+1 つの `Cutout` として返す。複数の差分アクションが存在する場合も、それぞれの切り出しを
+元 AST の index 昇順で 1 つの ASTNode リストに統合する（`gumtree/extract.py` の
+`cut_scope_diff` の merged.nodes と同じ流儀）。
 
 公開 API:
-    - cut_diff(diff, depth): list[Cutout]
+    - cut_diff(diff, depth): Cutout
+    - cut_diff_all_depths(diff, mb_id, depths): dict[int, Cutout]
+
+設計方針:
+    - 1 MB × 1 depth につき必ず 1 つの Cutout を返す（差分アクション数によらない）。
+    - 複数の差分アクションが異なる根に収束する場合も、それぞれの部分木ノード集合を
+      union して 1 つの `node_indices` (元 AST index 昇順) として保持する。
+    - `root_indices` には各差分アクションから決定された根ノード index を昇順で保持する
+      （重複排除済み）。
 """
 
 from __future__ import annotations
@@ -19,13 +29,6 @@ def _action_diff_indices(tree: list[ASTNode], action_index: int) -> set[int]:
 
     根とするノードの index `action_index` について、対象ノード j が部分木に含まれるのは
     j == action_index または action_index ∈ tree[j].parent のとき。
-
-    Args:
-        tree: 元 AST のノード列。
-        action_index: 差分アクションの根ノード index。
-
-    Returns:
-        差分ノード index の set。範囲外なら空集合。
     """
     if not (0 <= action_index < len(tree)):
         return set()
@@ -37,15 +40,7 @@ def _action_diff_indices(tree: list[ASTNode], action_index: int) -> set[int]:
 
 
 def _subtree_indices(tree: list[ASTNode], root_index: int) -> list[int]:
-    """根ノードを含む部分木の index 列を昇順で返す。
-
-    Args:
-        tree: 元 AST のノード列。
-        root_index: 部分木の根 index。
-
-    Returns:
-        昇順ソートされた index リスト（root 自身を含む）。
-    """
+    """根ノードを含む部分木の index 列を昇順で返す（root 自身を含む）。"""
     if not (0 <= root_index < len(tree)):
         return []
     indices = [root_index]
@@ -68,15 +63,6 @@ def _determine_root_index(
     L3: diff_index から親方向に遡り、最初に scope_boundary を満たすノード s の
         直接の子で diff_index の祖先である最上位ノード（diff_index が s の直接の子なら diff_index）。
     L4: s 自身。
-
-    Args:
-        tree: 元 AST のノード列。
-        diff_index: 差分ノードの index。
-        depth: 切り出し depth (1..4)。
-        scope_boundary: スコープ境界とみなすノード名集合。
-
-    Returns:
-        切り出し根ノード index。
     """
     node = tree[diff_index]
     parents = node.parent  # 根からのパス（祖先 index 列）
@@ -99,7 +85,6 @@ def _determine_root_index(
 
     # diff_index 自身がスコープ境界に該当する場合
     if s_pos_in_parents is None and node.name in scope_boundary:
-        # L3 = L4 = diff_index 自身
         return diff_index
 
     if s_pos_in_parents is None:
@@ -114,23 +99,25 @@ def _determine_root_index(
 
     # L3: s の直接の子で diff_index の祖先である最上位ノード
     if s_pos_in_parents == len(parents) - 1:
-        # diff_index が s の直接の子
         return diff_index
     return parents[s_pos_in_parents + 1]
 
 
-def cut_diff(diff: GumDiff, depth: int) -> list[Cutout]:
-    """差分から depth レベルの切り出し集合を返す。
+def cut_diff(diff: GumDiff, depth: int) -> Cutout:
+    """差分から depth レベルの切り出しを 1 つの Cutout として返す。
 
-    差分アクションの種別 (delete-tree / insert-tree / move-tree / update-node) を
-    問わず、`action.index` を根とする部分木全体を差分ノード集合 Δ に追加する。
+    複数の差分アクション (delete-tree / insert-tree / move-tree / update-node) が
+    存在する場合、それぞれの切り出し部分木のノード集合を union して、元 AST の index
+    昇順で 1 つの ASTNode リスト (`node_indices`) として返す。
 
     Args:
         diff: GumTree 差分。base_actions を使用（slow 側）。
         depth: 切り出し depth (1..4)。
 
     Returns:
-        差分ノード群を統合した Cutout のリスト。根ノードが重複したら統合される。
+        差分ノード群を統合した 1 つの Cutout。`Cutout.mb_id` は `getattr(diff, "id", -1)`
+        で決まるため、呼び出し側で必要に応じて上書きする（`cut_diff_all_depths` を推奨）。
+        差分アクションが空の場合は node_indices=[], root_indices=[] の空 Cutout を返す。
 
     Raises:
         ValueError: depth が 1..4 の範囲外。
@@ -141,51 +128,44 @@ def cut_diff(diff: GumDiff, depth: int) -> list[Cutout]:
     ast: AST = diff.base_ast
     tree = ast.tree
     mb_id_attr = getattr(diff, "id", None)
-    # GumDiff には id がないため、呼び出し側で必要なら Cutout.mb_id を上書きする
     mb_id = mb_id_attr if isinstance(mb_id_attr, int) else -1
 
-    # 各 action ごとに diff index 集合と root_index を計算
-    # root_index → (diff_indices set, all subtree indices) でマージする
+    # 各アクションから (root_index, diff_indices) を決定し、root ごとに差分ノードを union
     root_to_diff: dict[int, set[int]] = {}
-
     for action in diff.base_actions:
         if action.index is None:
             continue
         action_idx = action.index
         if not (0 <= action_idx < len(tree)):
             continue
-
-        diff_indices = _action_diff_indices(tree, action_idx)
         root_idx = _determine_root_index(tree, action_idx, depth, SCOPE_BOUNDARY)
+        diff_indices = _action_diff_indices(tree, action_idx)
+        root_to_diff.setdefault(root_idx, set()).update(diff_indices)
 
-        if root_idx in root_to_diff:
-            root_to_diff[root_idx] |= diff_indices
-        else:
-            root_to_diff[root_idx] = set(diff_indices)
-
-    cutouts: list[Cutout] = []
-    for root_idx in sorted(root_to_diff.keys()):
-        node_indices = _subtree_indices(tree, root_idx)
+    # 全 root の部分木ノードを union（元 AST index 昇順で 1 つのリストに統合）
+    merged_node_indices: set[int] = set()
+    merged_diff_indices: set[int] = set()
+    for root_idx, diff_indices in root_to_diff.items():
+        subtree = set(_subtree_indices(tree, root_idx))
+        merged_node_indices |= subtree
         # 差分ノードのうち実際に部分木に含まれるもののみを保持
-        diff_in_subtree = {i for i in root_to_diff[root_idx] if i in node_indices}
-        cutouts.append(
-            Cutout(
-                mb_id=mb_id,
-                depth=depth,
-                root_index=root_idx,
-                node_indices=node_indices,
-                diff_node_indices=diff_in_subtree,
-            )
-        )
-    return cutouts
+        merged_diff_indices |= diff_indices & subtree
+
+    return Cutout(
+        mb_id=mb_id,
+        depth=depth,
+        root_indices=sorted(root_to_diff.keys()),
+        node_indices=sorted(merged_node_indices),
+        diff_node_indices=merged_diff_indices,
+    )
 
 
 def cut_diff_all_depths(
     diff: GumDiff,
     mb_id: int,
     depths: tuple[int, ...] = (1, 2, 3, 4),
-) -> dict[int, list[Cutout]]:
-    """差分から指定 depth 集合の Cutout を一括生成し、`{depth: [Cutout, ...]}` を返す。
+) -> dict[int, Cutout]:
+    """差分から指定 depth 集合の Cutout を一括生成し、`{depth: Cutout}` を返す。
 
     各 Cutout には呼び出し側が指定した `mb_id` がセットされる。
     `cut_diff` の `mb_id = -1` フォールバックを廃止する経路として、本 API を推奨する。
@@ -196,13 +176,13 @@ def cut_diff_all_depths(
         depths: 生成対象の depth 集合（既定: (1, 2, 3, 4)）。
 
     Returns:
-        depth ごとの Cutout リスト。各 Cutout の `mb_id` は引数で指定された値。
+        depth ごとに 1 つの Cutout を持つ dict。`Cutout.mb_id` は引数で指定された値。
 
     Raises:
         ValueError: depths のいずれかが 1..4 の範囲外。
     """
-    result: dict[int, list[Cutout]] = {}
+    result: dict[int, Cutout] = {}
     for depth in depths:
-        cutouts = cut_diff(diff, depth)
-        result[depth] = [c.model_copy(update={"mb_id": mb_id}) for c in cutouts]
+        cutout = cut_diff(diff, depth)
+        result[depth] = cutout.model_copy(update={"mb_id": mb_id})
     return result

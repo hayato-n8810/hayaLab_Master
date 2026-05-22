@@ -53,6 +53,15 @@ experiments/scam/
 - **出力**: `outputs/scam/approach/02_patterns.json`
 - **処理**: 各 cutout × abst_level (0..3) で Pattern を生成
 - **実行**: `uv run python experiments/scam/approach/02_abstract.py --test`
+- **抽象化レベルの 2 軸定義**:
+  | level | bits | literal_generalize | gap_tolerant | クローン型相当 |
+  |---|---|---|---|---|
+  | A0 | `0b00` | False（既存正規化のまま） | False（厳密 subtree） | Type-1 |
+  | A1 | `0b01` | False | True（gap-tolerant 子マッチ） | Type-3 (構造のみ寛容) |
+  | A2 | `0b10` | True（リテラル汎化＋識別子は prefix-only） | False | Type-2 |
+  | A3 | `0b11` | True | True | Type-3 (Type-2 + 構造寛容) |
+  - 軸1 `literal_generalize` = `abst_level >> 1`: リテラルを型クラス (NUM, STR, BOOL, NULL, REGEX) に置換。識別子は A2/A3 で PREFIX_* prefix-only 一致、A0/A1 で完全一致。
+  - 軸2 `gap_tolerant` = `abst_level & 1`: 子マッチを「順序保存部分列埋め込み（追加のみ許容）」に切り替え。detect 側で動作する。
 - **出力スキーマ**:
   ```json
   [{ "mb_id": int,
@@ -65,6 +74,9 @@ experiments/scam/
 - **出力**: `outputs/scam/approach/03_detection_ids.json`
 - **処理**: 各パターンに対してデータセット全体への検出結果（マッチした MB id 集合）を計算。パターン同一性判定用ハッシュ単位で重複排除しつつ、`hayalab.pattern.compute_detection` を 1 パターンずつ呼ぶ。`--workers N` で ProcessPoolExecutor による並列化が可能。
 - **検出方式**: 正規表現プリフィルタは廃止し、AST 部分木マッチングのみで判定する。早期棄却用に「ノード型集合プリフィルタ」を導入（パターンが要求するノード型集合が target AST に存在しなければ即 False）。同一識別子整合性は AST マッチングの `theta` バインドで意味的に判定する。
+- **抽象化レベルとマッチング**:
+  - **識別子マッチ**: `abst_level >> 1` (literal_generalize) が True (A2/A3) なら `PREFIX_*` prefix-only 一致、False (A0/A1) なら `original_value` 完全一致。
+  - **子マッチ**: `abst_level & 1` (gap_tolerant) が True (A1/A3) なら順序保存部分列埋め込み（パターン側の全子が target に含まれ、順序を保てば OK; target 側の追加子は無視）。False (A0/A2) なら厳密な zip 一致。
 - **実行**:
   - 逐次: `uv run python experiments/scam/approach/03_detection.py --test`
   - 並列: `uv run python experiments/scam/approach/03_detection.py --workers 6`
