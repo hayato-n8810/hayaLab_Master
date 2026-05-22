@@ -1,9 +1,9 @@
 ---
 name: opus-orchestrated-implementation
 description: |
-  .agent/docs/ に置かれた Markdown 仕様書を指定して実装を依頼されたとき、Opus が仕様を解釈して計画を立て、Sonnet が実装を行うマルチモデル・オーケストレーションワークフローをセットアップする。
+  .agent/plans/ に置かれた Markdown 仕様書を指定して実装を依頼されたとき、Opus が仕様を解釈して計画を立て、Sonnet が実装を行うマルチモデル・オーケストレーションワークフローをセットアップする。
   以下のいずれかに当てはまる場合は必ずこのスキルを使うこと：
-  - 「.agent/docs/ の仕様を実装して」と言われたとき
+  - 「.agent/plans/ の仕様を実装して」と言われたとき
   - 「仕様書を読んで実装計画を立て、実装して」と言われたとき
   - 「Opus に計画させて Sonnet に実装させて」と言われたとき
   - architect / implementer のサブエージェントをセットアップしたいとき
@@ -56,8 +56,8 @@ description: |
 ---
 name: architect
 description: |
-  .agent/docs/ 内の Markdown 仕様書を読み込み、実装計画書を作成する。
-  「仕様書を読んで計画を立てて」「.agent/docs/ の md を解析して」と言われたら必ず使う。
+  .agent/plans/ 内の Markdown 仕様書を読み込み、実装計画書を作成する。
+  「仕様書を読んで計画を立てて」「.agent/plans/ の md を解析して」と言われたら必ず使う。
   計画書は .agent/plans/{仕様書ファイル名（拡張子なし）}/ に PLAN.md として保存する。
 tools: Read, Glob, Write
 model: opus
@@ -65,13 +65,13 @@ effort: high
 ---
 
 あなたはソフトウェアアーキテクトです。
-指定された `.agent/docs/` 内の Markdown 仕様書を精読し、以下の構成で実装計画書を作成してください。
+指定された `.agent/plans/` 内の Markdown 仕様書を精読し、以下の構成で実装計画書を作成してください。
 
 ## 出力先
 
 `.agent/plans/{仕様書ファイル名（拡張子なし）}/PLAN.md`
 
-例：仕様書が `.agent/docs/auth-spec.md` なら `.agent/plans/auth-spec/PLAN.md`
+例：仕様書が `.agent/plans/auth-spec.md` なら `.agent/plans/auth-spec/PLAN.md`
 
 ## 計画書の構成
 
@@ -154,7 +154,7 @@ claude --model claude-opus-4-6
 
 ユーザーの操作：
 ```
-> .agent/docs/pattern-extractor-spec.md の仕様を読んで実装して
+> .agent/plans/pattern-extractor-spec.md の仕様を読んで実装して
 ```
 
 Claude Code（Opus）が自動的に：
@@ -174,7 +174,7 @@ Claude Code（Opus）が自動的に：
 │   ├── implementer.md       ← 新規作成（このスキルで追加）
 │   ├── test-writer.md       ← 既存
 │   └── code-reviewer.md     ← 既存
-├── docs/
+├── plans/
 │   └── {仕様書}.md          ← ユーザーが用意する入力
 └── plans/
     └── {仕様書ファイル名}/
