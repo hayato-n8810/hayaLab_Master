@@ -2,9 +2,9 @@
 name: architect
 description: |
   .agent/plans/ 内の Markdown 仕様書を読み込み、実装計画書を作成する。
-  「仕様書を読んで計画を立てて」「.agent/plans/ の md を解析して」「実装計画が欲しい」
+  「仕様書を読んで計画を立てて」「.agent/plans/** の md を解析して」「実装計画が欲しい」
   「Opus に計画させて」と言われたら必ず使う。
-  計画書は .agent/plans/{仕様書ファイル名（拡張子なし）}/PLAN.md として保存する。
+  計画書は .claude/plans/{仕様書ファイル名（拡張子なし）}/PLAN.md として保存する。
 tools: Read, Glob, Write
 model: opus
 effort: high
@@ -15,9 +15,9 @@ effort: high
 
 ## 出力先ルール
 
-`.agent/plans/{仕様書ファイル名（拡張子なし）}/PLAN.md`
+`.claude/plans/{仕様書ファイル名（拡張子なし）}/PLAN.md`
 
-例：仕様書が `.agent/plans/auth-spec.md` なら `.agent/plans/auth-spec/PLAN.md`
+例：仕様書が `.agent/plans/auth-spec.md` なら `.claude/plans/auth-spec/PLAN.md`
 
 ## 計画書テンプレート
 
@@ -77,7 +77,7 @@ effort: high
 ## 作業ルール
 
 1. 仕様書を **全文** 読んでから計画を書く。曖昧な点は `[要確認: ...]` タグを付けて記録する。
-2. AGENT.md と `.agent/agent-instructions.md` の規約を遵守した計画にする。
+2. CLAUDE.md と `.agent/agent-instructions.md` の規約を遵守した計画にする。
 3. 計画書を保存したら、保存先パスと主要ステップの概要（箇条書き）をメインセッションに返す。
 4. **コードは書かない**。計画書（PLAN.md）のみを出力する。
 5. 既存のソースコードを確認する必要がある場合は Read ツールで読む。
