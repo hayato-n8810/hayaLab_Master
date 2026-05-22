@@ -13,10 +13,11 @@ from .extractors import (
     PropertyIdentifierExtractor,
     WhileStatementExtractor,
 )
-from .feature_extractor import extract_diff_features
+
+# from .feature_extractor import extract_diff_features  # 旧API（depricated 改名により無効化）
 
 __all__ = [
-    "extract_diff_features",
+    # "extract_diff_features",
     "ExtractionContext",
     "FeatureExtractor",
     "ForStatementExtractor",

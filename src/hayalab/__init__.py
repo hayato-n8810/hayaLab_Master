@@ -43,7 +43,6 @@ from .pattern.others import (
     NewExpressionExtractor,
     PropertyIdentifierExtractor,
     WhileStatementExtractor,
-    extract_diff_features,
 )
 
 # 統計検定
@@ -100,7 +99,6 @@ __all__ = [
     "IfStatementExtractor",
     "PropertyIdentifierExtractor",
     "NewExpressionExtractor",
-    "extract_diff_features",
     # パターン統合
     "integrate_features",
     # codeQL関連
