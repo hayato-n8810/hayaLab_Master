@@ -1,8 +1,11 @@
 """パターン抽出パイプライン用データモデル。
 
-切り出し（Cutout）、抽象化済みパターン（Pattern）、同値類（EquivalenceClass）、
-スコア（SizeScore）、選択結果（SelectionResult）、抽象化観測量（AbstractionObservation）、
-識別子 slot（IdentifierSlot）を定義する。
+抽象化済みパターン（Pattern）、同値類（EquivalenceClass）、選択結果（SelectionResult）、
+抽象化観測量（AbstractionObservation）、識別子 slot（IdentifierSlot）を定義する。
+
+切り出しデータは pydantic クラスを使わず `experiments/scam/approach/01_cutout.py` が
+出力する dict (`{"id", "cutouts": {"Diff", "Brother", "ExParent", "Parent"}}`) を
+そのまま扱う。
 
 すべて pydantic.BaseModel で JSON シリアライズ可能。`set` 型のフィールドは
 JSON 出力時には呼び出し側で sorted(list(...)) として書き出すこと（再現性のため）。
@@ -11,31 +14,6 @@ JSON 出力時には呼び出し側で sorted(list(...)) として書き出す�
 from __future__ import annotations
 
 from pydantic import BaseModel, Field
-
-
-class Cutout(BaseModel):
-    """単一の切り出し結果（1 MB × 1 depth で必ず 1 個）。
-
-    複数の差分アクション（delete-tree / insert-tree / move-tree / update-node）が
-    存在する場合も、それらを統合した「1 つの ASTNode リスト」として保持する。
-    元 AST における配列インデックス昇順で並ぶ。
-
-    Attributes:
-        mb_id: 由来 MB の id（MBDiff の id フィールドそのもの）。
-        depth: 切り出し depth (1, 2, 3, 4)。
-        root_indices: 差分アクションごとに決定された根ノード index を昇順で保持
-            （重複排除済み）。複数アクションが同じ根に収束した場合は 1 つになる。
-        node_indices: 切り出し部分木に含まれる AST ノードの配列インデックスを
-            昇順に並べたリスト（全アクションの和集合）。
-        diff_node_indices: 上記のうち差分ノード（GumTree が変更点として検出したノード）に
-            該当するインデックスの集合。
-    """
-
-    mb_id: int
-    depth: int
-    root_indices: list[int]
-    node_indices: list[int]
-    diff_node_indices: set[int] = Field(default_factory=set)
 
 
 class IdentifierSlot(BaseModel):
@@ -57,25 +35,40 @@ class IdentifierSlot(BaseModel):
 class Pattern(BaseModel):
     """検出可能なパターン表現。
 
-    抽象化レベル `abst_level` は 2 軸 × 2 値の組合せで以下の意味を持つ:
-        - bit 1 (literal_generalize = abst_level >> 1): リテラル汎化と識別子マッチ規則
-        - bit 0 (gap_tolerant = abst_level & 1): 子マッチを gap-tolerant 化（detect 側で参照）
+    抽象化レベル `abst_level` は 3 段階の単調設計で以下の意味を持つ:
+
+    - **0 (A1) 既存正規化のまま**: 識別子は前段で `VAR_N` 等に prefix-番号 正規化済み。
+      リテラルは具体値、ノード名もそのまま。
+    - **1 (A2) + リテラル汎化**: `LITERAL_TYPE_MAP` のリテラル (数値/文字列/真偽値/
+      null/regex) を型クラス (NUM/STR/BOOL/NULL/REGEX) に置換 (Type-2 clone 流)。
+    - **2 (A3) + 意味的汎化**:
+        1. 関数種別統一: `FUNCTION_LIKE_TYPES` (関数系 7 種) を共通ラベル
+           `FUNCTION_LIKE` に置換 (role-based token abstraction)。
+        2. variadic マーカ: `VARIADIC_CONTAINER_TYPES` (`arguments` /
+           `formal_parameters`) のノードに `variadic: True` を付与し、検出側で
+           当該子リストにのみ順序保存部分列許容マッチ (Baker 1995) を適用。
+
+    検出側 (`hayalab.pattern.detect`) は識別子値比較を全レベルで prefix-only 一致に
+    固定する。slot/backreference (theta) 同一性も全レベル維持。
 
     Attributes:
         mb_id: 由来 MB の id（複数 MB から生成された同一パターンは別オブジェクト）。
-        depth: 切り出し depth。
-        abst_level: 抽象化レベル (0..3)。
+        depth: 切り出し粒度名 ("Diff" / "Brother" / "ExParent" / "Parent")。
+        abst_level: 抽象化レベル (0=A1, 1=A2, 2=A3)。
         ast_template: 抽象化適用後の AST テンプレート。各要素は
-            {"name": str, "value": str, "parent_relative": list[int],
-             "slot_id": int | None, "prefix": str | None, "original_value": str | None,
-             "is_terminal": bool}。
+            {"origin_index": int, "name": str, "value": str,
+             "parent_relative": list[int],
+             "slot_id": int | None, "prefix": str | None,
+             "original_value": str | None, "is_terminal": bool,
+             "variadic": bool}。
             識別子ノードは slot_id を持ち、同一識別子の複数出現を結びつける。
+            variadic は A3 で `VARIADIC_CONTAINER_TYPES` に該当するノードのみ True。
         signature: パターン同一性判定用のハッシュ文字列（決定論的、ast_template から計算）。
             同じ AST テンプレートを持つパターンは同じ値を取る、内部キー。
     """
 
     mb_id: int
-    depth: int
+    depth: str
     abst_level: int
     ast_template: list[dict] = Field(default_factory=list)
     signature: str = ""
@@ -90,12 +83,12 @@ class ClassMember(BaseModel):
     Attributes:
         mb_id: パターンの元となった MB の id。
         signature: パターン同一性判定用ハッシュ。
-        depth: 由来 depth。
+        depth: 由来粒度名 ("Diff" / "Brother" / "ExParent" / "Parent")。
     """
 
     mb_id: int
     signature: str
-    depth: int
+    depth: str
 
 
 class EquivalenceClass(BaseModel):
@@ -116,35 +109,19 @@ class EquivalenceClass(BaseModel):
     detect_id: set[int]
 
 
-class SizeScore(BaseModel):
-    """サイズスコア成分。
-
-    Attributes:
-        rho: Diff Density Ratio = |diff_nodes| / |all_nodes_in_cutout| ∈ [0, 1]。
-        sigma: Normalized Node Count = |N(L)| / N_max ∈ [0, 1]。
-        score: 統合スコア = w * rho + (1 - w) * sigma ∈ [0, 1]。
-        weight_w: 統合重み w（参照のために保持）。
-    """
-
-    rho: float
-    sigma: float
-    score: float
-    weight_w: float
-
-
 class SelectionResult(BaseModel):
     """MB ごとの最適 (L*, A*) 選択結果。
 
     Attributes:
         mb_id: 対象 MB の id。
-        optimal_depth: 選択された depth (1..4) または None。
+        optimal_depth: 選択された粒度名 ("Diff" / "Brother" / "ExParent" / "Parent") または None。
         optimal_abst_level: 選択された抽象化レベル (0..3) または None。
         status: "selected" | "unrepresentable"。
         equivalence_class_id: 帰属する同値類 ID（status == "selected" のとき）。
     """
 
     mb_id: int
-    optimal_depth: int | None
+    optimal_depth: str | None
     optimal_abst_level: int | None
     status: str
     equivalence_class_id: str | None = None

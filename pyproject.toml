@@ -11,6 +11,7 @@ dependencies = [
     "apted>=1.0.3",
     "matplotlib>=3.10.8",
     "numpy>=2.4.0",
+    "plotly>=6.7.0",
     "pydantic>=2.12.5",
     "pyyaml>=6.0.3",
     "scipy>=1.15.1",

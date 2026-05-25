@@ -141,30 +141,40 @@ def matches_source_code(regex: str, source_code: str) -> bool:
 
 
 def collect_candidates(
-    scope_sources: list[tuple[str, dict | None]],
+    cutouts: dict[str, dict] | None,
 ) -> list[dict]:
-    """各スコープの merged ノードリストをスコープ候補として収集する.
+    """新スキーマ cutouts (Stage 1 出力 outputs/scam/approach/01_cutouts.json の cutouts) を
+    スコープ候補リストに展開する.
 
-    包含関係の小さい順（DIFF → BROTHER → EXCL → INCL）に渡すことで
-    後続の deduplicate_candidates が小さいスコープを優先して残す
+    包含関係の小さい順（Diff → Brother → ExParent → Parent）で展開することで
+    後続の deduplicate_candidates が小さいスコープを優先して残す.
 
     Args:
-        scope_sources: (スコープ名プレフィックス, スコープデータ dict) のリスト
-            データが None のスコープはスキップする
+        cutouts: {"Diff": {"diff_node_indices": [...], "nodes": [...]}, ...} の dict
+            None または該当キー無しのスコープはスキップする
 
     Returns:
-        [{name, nodes}] の候補リスト
+        [{name: "merged_diff" | "merged_brother" | ..., nodes: [...]}] の候補リスト
     """
+    if cutouts is None:
+        return []
+    # 旧名 (merged_diff / merged_brother / merged_excl / merged_incl) を保持して
+    # 後段の get_diff_nodes(name == "merged_diff") との互換を維持する
+    name_map: tuple[tuple[str, str], ...] = (
+        ("Diff", "merged_diff"),
+        ("Brother", "merged_brother"),
+        ("ExParent", "merged_excl"),
+        ("Parent", "merged_incl"),
+    )
     candidates: list[dict] = []
-    for scope_prefix, scope_data in scope_sources:
-        if scope_data is None:
+    for scope_key, legacy_name in name_map:
+        cut = cutouts.get(scope_key)
+        if cut is None:
             continue
-        candidates.append(
-            {
-                "name": f"merged_{scope_prefix}",
-                "nodes": scope_data["merged"]["nodes"],
-            }
-        )
+        nodes = cut.get("nodes", [])
+        if not nodes:
+            continue
+        candidates.append({"name": legacy_name, "nodes": nodes})
     return candidates
 
 
@@ -441,17 +451,18 @@ def _process_single_id(args: tuple) -> tuple[dict, dict]:
     ProcessPoolExecutor から呼ばれるためモジュールレベルの関数として定義する
 
     Args:
-        args: (program_id, scope_sources, full_tree, source_code)
+        args: (program_id, cutouts, full_tree, source_code)
+            cutouts: Stage 1 (01_cutouts.json) の 1 MB 分の "cutouts" dict
 
     Returns:
         (output_record, bone_entry)
             output_record: 粒度判定結果（全候補スコア・選択スコープ）
             bone_entry: フィルタリング後の全候補の program_born_full
     """
-    program_id, scope_sources, full_tree, source_code = args
+    program_id, cutouts, full_tree, source_code = args
 
     # ── 候補の収集・前処理 ──
-    candidates = collect_candidates(scope_sources)
+    candidates = collect_candidates(cutouts)
 
     # フィルタリング前（重複除去前）の全候補の bone
     all_candidates_bones: list[dict] = [
@@ -509,38 +520,20 @@ def main() -> None:
     # ── コーパスの読み込み ──
     print("loading data...", flush=True)
     corpus_entries: list[dict] = hayalab.read_json(str(config.processed / "MBDiff.json"))
-    # corpus_entries: list[dict] = hayalab.read_json(str(config.data / "test_data" / "MBDiff_target.json"))
 
     # sibling_completeness 計算用の full AST（対象 ID のみ後で参照する）
     corpus_full_trees: dict[int, list[dict]] = {entry["id"]: entry["diff"]["base_ast"]["tree"] for entry in corpus_entries}
     # str_R 判定用のソースコード
     corpus_source_codes: dict[int, str] = {entry["id"]: entry["diff"]["base_ast"]["code"] for entry in corpus_entries}
 
-    # ── スコープファイルの読み込み ──
-    # 包含順（DIFF ⊆ BROTHER ⊆ EXCL ⊆ INCL）で定義することで
-    # deduplicate_candidates が小さいスコープを優先して残す
-    scope_file_specs: list[tuple[str, str]] = [
-        ("diff", str(config.outputs / "AST" / "scope_DIFF_BLOCK_all.json")),
-        ("brother", str(config.outputs / "AST" / "scope_BROTHER_DIFF_all.json")),
-        ("excl", str(config.outputs / "AST" / "scope_BLOCK_EXCLUDE_PARENT_all.json")),
-        ("incl", str(config.outputs / "AST" / "scope_BLOCK_INCLUDE_DIFF_all.json")),
-    ]
-    # scope_file_specs: list[tuple[str, str]] = [
-    #     ("diff", str(config.outputs / "AST" / "scope_DIFF_BLOCK_targets.json")),
-    #     ("brother", str(config.outputs / "AST" / "scope_BROTHER_DIFF_targets.json")),
-    #     ("excl", str(config.outputs / "AST" / "scope_BLOCK_EXCLUDE_PARENT_targets.json")),
-    #     ("incl", str(config.outputs / "AST" / "scope_BLOCK_INCLUDE_DIFF_targets.json")),
-    # ]
+    # ── Stage 1 統合 cutouts (新スキーマ) の読み込み ──
+    cutouts_path = config.outputs / "scam" / "approach" / "01_cutouts.json"
+    if not cutouts_path.exists():
+        raise FileNotFoundError(f"Stage 1 cutouts が見つかりません: {cutouts_path} (先に 01_cutout.py を実行)")
+    cutouts_entries: list[dict] = hayalab.read_json(str(cutouts_path))
+    cutouts_by_id: dict[int, dict] = {e["id"]: e["cutouts"] for e in cutouts_entries}
 
-    scope_datasets: list[tuple[str, dict[int, dict]]] = [
-        (
-            scope_name,
-            {entry["id"]: entry for entry in hayalab.read_json(path)},
-        )
-        for scope_name, path in scope_file_specs
-    ]
-
-    all_program_ids = sorted(set().union(*(dataset.keys() for _, dataset in scope_datasets)))
+    all_program_ids = sorted(cutouts_by_id.keys())
     total = len(all_program_ids)
     print(f"processing {total} entries in parallel...", flush=True)
 
@@ -549,8 +542,7 @@ def main() -> None:
     # args タプルをジェネレータで生成することで 大量の全データを一度にメモリ展開せずに submit できる
     def _iter_worker_args():
         for pid in all_program_ids:
-            scope_sources = [(name, ds.get(pid)) for name, ds in scope_datasets]
-            yield (pid, scope_sources, corpus_full_trees.get(pid, []), corpus_source_codes.get(pid, ""))
+            yield (pid, cutouts_by_id[pid], corpus_full_trees.get(pid, []), corpus_source_codes.get(pid, ""))
 
     results_map: dict[int, tuple[dict, dict]] = {}
     with ProcessPoolExecutor() as executor:
