@@ -11,10 +11,7 @@
 | 2 (A3) | + 意味的汎化    | A2 に加えて以下を適用: |
 |         |                  | ① 関数種別統一: `FUNCTION_LIKE_TYPES` (7 種) を共通ラベル |
 |         |                  |    `FUNCTION_LIKE` に置換 (role-based token abstraction) |
-|         |                  | ② variadic マーカ: `VARIADIC_CONTAINER_TYPES` |
-|         |                  |    (`arguments` / `formal_parameters`) のノードに |
-|         |                  |    `variadic: True` を付与。検出側はこのマーカが付いた |
-|         |                  |    子リストにのみ順序保存部分列マッチを適用 (Baker 1995) |
+
 
 検出側 (`detect.py`) は識別子値比較を**全レベルで prefix-only 一致に固定**する。
 slot/backreference (theta) 同一性も全レベル維持。
@@ -41,8 +38,6 @@ from hayalab.config.pattern_config import (
     IDENTIFIER_NODE_TYPES,
     IDENTIFIER_PREFIXES,
     LITERAL_TYPE_MAP,
-    PROTO_RECV_LABEL,
-    VARIADIC_CONTAINER_TYPES,
 )
 
 
@@ -72,8 +67,7 @@ def _abstract_node_from_payload(
         slot_lookup: original_value → slot_id のマップ（呼び出し側で構築・更新）。
 
     Returns:
-        ast_template の 1 要素となる dict。`variadic` フィールドは A3 で
-        VARIADIC_CONTAINER_TYPES に該当する場合 True、それ以外 False。
+        ast_template の 1 要素となる dict。
     """
     idx = node_payload["origin_index"]
     name = node_payload["name"]
@@ -83,7 +77,6 @@ def _abstract_node_from_payload(
     prefix: str | None = None
     original_value: str | None = None
     is_terminal = _is_terminal_label(label, name)
-    variadic = False
 
     # ── 識別子: 全レベルで slot_id/prefix/original_value を保持（マッチ規則は detect 側で prefix-only に固定） ──
     if name in IDENTIFIER_NODE_TYPES:
@@ -103,10 +96,6 @@ def _abstract_node_from_payload(
         name = FUNCTION_LIKE_LABEL
         value = FUNCTION_LIKE_LABEL
 
-    # ── A3: variadic マーカ ──
-    if abst_level >= 2 and node_payload["name"] in VARIADIC_CONTAINER_TYPES:
-        variadic = True
-
     return {
         "origin_index": idx,
         "name": name,
@@ -115,7 +104,6 @@ def _abstract_node_from_payload(
         "prefix": prefix,
         "original_value": original_value,
         "is_terminal": is_terminal,
-        "variadic": variadic,
     }
 
 
@@ -254,8 +242,6 @@ def abstract_cutout(
             # PROTO_RECV ノードに置換 (variadic=True で子の差異を吸収)
             tn = {
                 "origin_index": n["origin_index"],
-                "name": PROTO_RECV_LABEL,
-                "value": PROTO_RECV_LABEL,
                 "slot_id": None,
                 "prefix": None,
                 "original_value": None,

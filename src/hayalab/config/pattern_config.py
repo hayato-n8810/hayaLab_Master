@@ -64,6 +64,9 @@ LITERAL_TYPE_MAP: dict[str, str] = {
     "regex": "REGEX",
 }
 
+FUNCTION_LIKE_TYPES: set[str] = {"arrow_function", "function_expression", "function_declaration", "generator_function", "generator_function_declaration", "method_definition"}
+FUNCTION_LIKE_LABEL: str = "FUNCTION_LIKE"
+
 
 # ──────────────────────────────────────────────────────────
 # 識別子（プレフィクスベース identity 保持）
