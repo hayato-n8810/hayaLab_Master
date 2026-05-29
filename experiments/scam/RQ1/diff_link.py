@@ -43,7 +43,7 @@ _AFTER_KIND: dict[int, str | set[str]] = {
     4: "call_expression",  # .empty()
     5: "call_expression",  # .charAt()
     6: "call_expression",  # .replace()
-    7: "binary_expression",  # instanceof
+    7: {"binary_expression", "call_expression"},  # instanceof / typeof / Array.isArray
     8: "binary_expression",  # & 1
     9: "for_statement",
     10: {"if_statement", "ternary_expression"},  # if 文 + ===/!== もしくは三項演算子 + ===/!==
@@ -142,6 +142,40 @@ def _get_call_receiver_identifier(nodes: list[ASTNode], call_idx: int) -> str | 
     if nodes[obj].name != "identifier":
         return None
     return nodes[obj].value
+
+
+def _binary_with_typeof_eq(head_nodes: list[ASTNode], bin_idx: int) -> bool:
+    """binary_expression が typeof X === "..." / typeof X !== "..." 形式かを判定する。
+
+    `typeof X` は tree-sitter-javascript では unary_expression（演算子 typeof）として
+    表現される。これと文字列リテラルの === / !== 比較なら True を返す。
+
+    Args:
+        head_nodes: head 側 ASTNode リスト。
+        bin_idx: binary_expression のインデックス。
+
+    Returns:
+        条件を満たせば True。
+    """
+    if not (_binary_has_operator(head_nodes, bin_idx, "===") or _binary_has_operator(head_nodes, bin_idx, "!==")):
+        return False
+    parent_path = head_nodes[bin_idx].parent + [bin_idx]
+    has_typeof = False
+    has_string = False
+    for j in range(bin_idx + 1, len(head_nodes)):
+        if head_nodes[j].parent != parent_path:
+            continue
+        node = head_nodes[j]
+        if node.name == "unary_expression":
+            # unary_expression の演算子 typeof を探す
+            unary_parent = node.parent + [j]
+            for k in range(j + 1, len(head_nodes)):
+                if head_nodes[k].parent == unary_parent and head_nodes[k].name == "typeof":
+                    has_typeof = True
+                    break
+        elif node.name == "string":
+            has_string = True
+    return has_typeof and has_string
 
 
 def _binary_plus_with_string_or_var(head_nodes: list[ASTNode], bin_idx: int) -> bool:
@@ -248,15 +282,19 @@ def _head_matches_after_for_pattern(
         return _is_object_keys_call(head_nodes, head_idx)
 
     if pattern_id == 2:
-        # subscript_expression で object が identifier / member_expression / call_expression
+        # subscript_expression の `[` トークン直前にある最初の直接子（object 相当）が
+        # identifier / member_expression / call_expression なら True。
+        # tree-sitter-javascript では field 名 "object" は別ノードにならず、object 相当
+        # ノードが subscript_expression の最初の named 子として直接現れる。
         parent_path = head_nodes[head_idx].parent + [head_idx]
+        object_kinds = {"identifier", "member_expression", "call_expression"}
         for j in range(head_idx + 1, len(head_nodes)):
             if head_nodes[j].parent != parent_path:
                 continue
-            if head_nodes[j].name == "object":
-                if j + 1 >= len(head_nodes):
-                    return False
-                return head_nodes[j + 1].name in {"identifier", "member_expression", "call_expression"}
+            if head_nodes[j].name == "[":
+                break
+            if head_nodes[j].name in object_kinds:
+                return True
         return False
 
     if pattern_id == 3:
@@ -282,7 +320,15 @@ def _head_matches_after_for_pattern(
         return _has_member_property(head_nodes, head_idx, "replace")
 
     if pattern_id == 7:
-        return _binary_has_operator(head_nodes, head_idx, "instanceof")
+        # binary_expression: instanceof もしくは typeof X === "..." 形式
+        if head_node.name == "binary_expression":
+            if _binary_has_operator(head_nodes, head_idx, "instanceof"):
+                return True
+            return _binary_with_typeof_eq(head_nodes, head_idx)
+        # call_expression: Array.isArray(...) などの組込み型判定
+        if head_node.name == "call_expression":
+            return _has_member_property(head_nodes, head_idx, "isArray")
+        return False
 
     if pattern_id == 8:
         # & 1 を要求（rhs が number:1）
@@ -450,14 +496,19 @@ def apply_diff_link(
     head_covered = False
 
     if base_covered and head_actions and head_nodes:
-        # head_actions が指す起点ノードインデックスを集める
-        action_roots: list[int] = []
+        # head_actions が指す起点ノードと、その祖先（action.ancestors）も anchor に加える。
+        # GumTree が新規構造の内側（子トークンや孫ノード）に対して fine-grained な
+        # insert/update を発行した場合、新規構造そのものは action.index ではなく
+        # ancestors 配下に現れるため、ancestors も anchor に含めることで
+        # subscript_expression や replace call などの「包む新規構造」を取り逃さない。
+        action_roots: set[int] = set()
         for action in head_actions:
-            root = _resolve_action_node_index(action)
-            if root is None:
-                continue
-            if 0 <= root < len(head_nodes):
-                action_roots.append(root)
+            if action.index is not None and 0 <= action.index < len(head_nodes):
+                action_roots.add(action.index)
+            if action.ancestors:
+                for anc in action.ancestors:
+                    if 0 <= anc.index < len(head_nodes):
+                        action_roots.add(anc.index)
 
         if action_roots:
             # 各 head ノードを走査し、いずれかの action subtree に属し、
