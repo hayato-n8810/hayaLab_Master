@@ -31,6 +31,8 @@ Diff 自身では `Diff.nodes` 全体の `origin_index` 集合に等しい。
 from __future__ import annotations
 
 import argparse
+import os
+from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -52,6 +54,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--input", type=Path, default=None, help="MBDiff JSON path")
     parser.add_argument("--test", action="store_true", help="use data/test_data/MBDiff_target.json")
     parser.add_argument("--output-dir", type=Path, default=None)
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=None,
+        help="並列ワーカー数 (default: os.cpu_count())。1 を指定すると逐次実行",
+    )
     return parser.parse_args()
 
 
@@ -71,6 +79,20 @@ def _build_cutout_entry(nodes: list[dict[str, Any]], diff_origin_set: set[int]) 
     """
     in_scope_diff = sorted({n["origin_index"] for n in nodes} & diff_origin_set)
     return {"diff_node_indices": in_scope_diff, "nodes": nodes}
+
+
+def _process_record(rec: dict[str, Any]) -> dict[str, Any]:
+    """1 record (MBDiff の 1 要素) を処理して結果エントリを返す。
+
+    ProcessPoolExecutor のワーカーから呼ぶためトップレベル関数として定義する。
+    """
+    record_id = rec["id"]
+    if rec.get("diff") is None:
+        # diff が欠損しているレコードは cutouts を空にして id のみ保持する。
+        return {"id": record_id, "cutouts": {}}
+    gum_diff = GumDiff.model_validate(rec["diff"])
+    cutouts = build_cutouts_for_mb(gum_diff)
+    return {"id": record_id, "cutouts": cutouts}
 
 
 def build_cutouts_for_mb(gum_diff: GumDiff) -> dict[str, dict[str, Any]]:
@@ -98,7 +120,7 @@ def main() -> None:
     input_path = determine_input(args, pc)
     output_dir = args.output_dir or (pc.outputs / "scam" / "approach")
     output_dir.mkdir(parents=True, exist_ok=True)
-    output_path = output_dir / "01_cutouts.json"
+    output_path = output_dir / "01_cutouts_separate.json"
 
     if not input_path.exists():
         raise FileNotFoundError(f"入力ファイルが見つかりません: {input_path}")
@@ -106,17 +128,24 @@ def main() -> None:
     records = sorted(hayalab.read_json(str(input_path)), key=lambda r: r["id"])
     print(f"[RECORDS] {len(records)}", flush=True)
 
-    results: list[dict[str, Any]] = []
-    for rec in records:
-        record_id = rec["id"]
-        gum_diff = GumDiff.model_validate(rec["diff"])
-        cutouts = build_cutouts_for_mb(gum_diff)
-        results.append({"id": record_id, "cutouts": cutouts})
+    workers = args.workers if args.workers is not None else (os.cpu_count() or 1)
+    if workers <= 1:
+        print("[MODE] sequential", flush=True)
+        results: list[dict[str, Any]] = [_process_record(rec) for rec in records]
+    else:
+        print(f"[MODE] parallel (workers={workers})", flush=True)
+        # executor.map は入力順を保持するため、id 昇順の出力順序は維持される。
+        with ProcessPoolExecutor(max_workers=workers) as executor:
+            results = list(executor.map(_process_record, records, chunksize=16))
 
     hayalab.write_json(str(output_path), results)
     print(f"[OUTPUT] {output_path}", flush=True)
+    empty = sum(1 for r in results if not r["cutouts"])
     total = sum(len(r["cutouts"]) for r in results)
-    print(f"[SUMMARY] {len(results)} MBs × 4 cutouts = {total}", flush=True)
+    print(
+        f"[SUMMARY] {len(results)} MBs ({empty} empty / diff=None) × 4 cutouts = {total}",
+        flush=True,
+    )
 
 
 if __name__ == "__main__":
