@@ -14,8 +14,10 @@ dependencies = [
     "plotly>=6.7.0",
     "pydantic>=2.12.5",
     "pyyaml>=6.0.3",
+    "scikit-learn>=1.8.0",
     "scipy>=1.15.1",
     "tqdm>=4.67.1",
+    "zss>=1.2.0",
 ]
 
 [build-system]
@@ -59,3 +61,8 @@ ignore = [
 [tool.ruff.lint.pydocstyle]
 # docstringはgoogle style
 convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+# テストファイルでは pytest 慣例に従い、メソッド docstring・loop 変数 L 等を許容
+"**/tests/**/*.py" = ["D101", "D102", "D103", "D107", "N806", "E402"]
+"**/test_*.py"     = ["D101", "D102", "D103", "D107", "N806", "E402"]
