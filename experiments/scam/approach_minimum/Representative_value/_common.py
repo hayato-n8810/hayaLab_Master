@@ -21,6 +21,7 @@ cutout_id は ``"{mb_id}_{depth}"`` 形式（integrate.py と同様）。
 
 from __future__ import annotations
 
+import pickle
 import re
 from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor
@@ -34,6 +35,9 @@ DEPTHS: tuple[str, ...] = ("Diff", "Brother", "ExParent", "Parent")
 
 # integrate.py と同じ slot 番号正規化（``$v0`` → ``$v``）。
 _SLOT_NUM_RE = re.compile(r"^\$([vfkns])\d+$")
+
+# integrate.py の ``NGRAMS_CACHE_VERSION`` と整合させる。
+NGRAMS_CACHE_VERSION = 1
 
 
 def normalize_value(value: str | None) -> str:
@@ -96,6 +100,85 @@ def integrate_dir(config: PathConfig, tau_dir: str) -> Path:
 def abstract_path(config: PathConfig, level: int) -> Path:
     """``abstract_level{L}.json`` のパスを返す."""
     return config.outputs / "scam" / "approach_minimum" / "abstract" / f"abstract_level{level}.json"
+
+
+def bigrams_cache_path(config: PathConfig, level: int, n_value: int = 2) -> Path:
+    """``abstract/bigrams_level{L}_n{N}.pkl`` のパスを返す.
+
+    ``integrate.py`` が同じパス・スキーマで書き出す。Representative_value 側は
+    consumer として読むのみ。
+    """
+    return abstract_path(config, level).with_name(f"bigrams_level{level}_n{n_value}.pkl")
+
+
+def _is_cache_fresh(cache_path: Path, source_path: Path) -> bool:
+    """Cache が存在し source より新しければ ``True``.
+
+    どちらかが欠けていれば ``False``。 source が将来時刻を持っているなど
+    異常時も新鮮ではないとして fallback に倒す。
+    """
+    if not cache_path.exists():
+        return False
+    if not source_path.exists():
+        # source 無し & cache あり: cache は陳腐化判定不能。とりあえず新鮮として
+        # 扱う（integrate が古い state で書いた cache を使うリスクは低い）。
+        return True
+    return cache_path.stat().st_mtime >= source_path.stat().st_mtime
+
+
+def load_id_to_bigrams_cached(
+    config: PathConfig,
+    level: int,
+    n_value: int = 2,
+) -> dict[str, dict[int, frozenset]] | None:
+    """1 レベル分の n-gram テーブルをロードする.
+
+    1. ``bigrams_level{L}_n{N}.pkl`` が abstract JSON より新しければ pickle を
+       読む（[BIGRAMS] cache hit）。
+    2. pickle がなければ abstract JSON を読み、 ``build_id_to_bigrams_table``
+       で計算して返す（[BIGRAMS] cache miss → fallback (json)）。
+       cache の書き出しは行わない（producer は ``integrate.py`` に一本化）。
+    3. cache も abstract JSON も無ければ ``None`` を返す。
+
+    Args:
+        config: パス解決用。
+        level: 抽象化レベル。
+        n_value: n-gram の n（既定 2）。
+
+    Returns:
+        ``{depth: {mb_id: frozenset(n-grams)}}`` または ``None``。
+    """
+    cache_p = bigrams_cache_path(config, level, n_value)
+    abs_p = abstract_path(config, level)
+
+    if _is_cache_fresh(cache_p, abs_p):
+        with cache_p.open("rb") as f:
+            payload = pickle.load(f)  # noqa: S301 -- 自己生成のローカル cache
+        if payload.get("version") == NGRAMS_CACHE_VERSION and payload.get("schema") == "abst_id_to_ngrams":
+            print(f"[BIGRAMS] cache hit: {cache_p}", flush=True)
+            data = payload["data"]
+            # 防御的コピー: depth キーが想定外でも欠落キーは空辞書を返したい。
+            return {d: data.get(d, {}) for d in DEPTHS}
+        print(
+            f"[BIGRAMS] cache version mismatch ({payload.get('version')!r}), falling back to JSON",
+            flush=True,
+        )
+
+    if not abs_p.exists():
+        return None
+
+    print(f"[BIGRAMS] cache miss → fallback to {abs_p}", flush=True)
+    records = hayalab.read_json(str(abs_p))
+    table: dict[str, dict[int, frozenset]] = {d: {} for d in DEPTHS}
+    for entry in records:
+        mb_id = entry["id"]
+        cutouts = entry.get("cutouts", {})
+        for depth in DEPTHS:
+            cutout = cutouts.get(depth)
+            if not cutout:
+                continue
+            table[depth][mb_id] = bigrams_from_nodes(cutout.get("nodes", []))
+    return table
 
 
 def cluster_paths(

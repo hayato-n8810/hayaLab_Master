@@ -56,15 +56,13 @@ from typing import Any
 
 from _common import (
     DEPTHS,
-    abstract_path,
     jaccard,
-    load_id_to_bigrams,
+    load_id_to_bigrams_cached,
     read_inputs,
     run_parallel,
     write_output,
 )
 
-import hayalab
 from hayalab.config import PathConfig
 
 STRATEGY = "medoid_outlier"
@@ -228,16 +226,18 @@ def main() -> None:
     print(f"[CONFIG] workers={workers}", flush=True)
 
     for level in args.levels:
-        abs_path = abstract_path(config, level)
-        if not abs_path.exists():
-            print(f"[SKIP] abstract not found: {abs_path}", flush=True)
+        table = load_id_to_bigrams_cached(config, level)
+        if table is None:
+            print(
+                f"[SKIP] level{level}: bigrams cache and abstract JSON both missing",
+                flush=True,
+            )
             continue
-        print(f"[ABSTRACT] {abs_path}", flush=True)
-        records = hayalab.read_json(str(abs_path))
 
         for depth in args.depths:
-            id_to_bigrams = load_id_to_bigrams(records, depth)
+            id_to_bigrams = table.get(depth, {})
             process_depth(config, args.tau_dir, level, depth, id_to_bigrams, args.outlier_tau, workers)
+        del table
 
 
 if __name__ == "__main__":

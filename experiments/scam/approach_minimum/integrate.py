@@ -47,6 +47,7 @@ import argparse
 import json
 import logging
 import os
+import pickle
 import re
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from hashlib import sha256
@@ -59,6 +60,10 @@ DEPTHS: tuple[str, ...] = ("Diff", "Brother", "ExParent", "Parent")
 
 # リポジトリルート（experiments/scam/approach_minimum/integrate.py の 3 つ上）。
 ROOT = Path(__file__).resolve().parents[3]
+
+# n-gram キャッシュ pickle のスキーマバージョン。トークン化規約や格納形を
+# 変更した場合に bump し、 古い cache を自動的に無効化する。
+NGRAMS_CACHE_VERSION = 1
 
 # slot 番号正規化: ``$v0`` → ``$v``。prefix v/f/k/n/s に続く数字を捨てる。
 # ``$api`` は数字を持たないためマッチせず素通しになる。
@@ -315,38 +320,100 @@ def greedy_merge(
 # ---------------------------------------------------------------------------
 
 
-def _build_patterns(
+def _build_id_to_ngrams_table(
     records: list[dict],
-    depth: str,
+    depths: tuple[str, ...],
     n_value: int,
-) -> tuple[list[str], dict[str, frozenset]]:
-    """指定 depth について全 MB の cutout から (ids, n-gram 集合) を作る。
+) -> dict[str, dict[int, frozenset]]:
+    """1 レベル分の records から ``{depth: {mb_id: frozenset(n-grams)}}`` を作る。
+
+    integrate のクラスタリングと Representative_value 戦略の双方で利用する
+    "n-gram テーブルの正規源" となる関数。同じ records を depth ごとに何度も
+    走査せず、 1 回のレコードスキャンで全 depth 分をまとめる。
 
     Args:
-        records: ``abstract_level{L}.json`` の読み込み結果（``{"id", "cutouts"}``）。
-        depth: 対象 depth（``"Diff"`` 等）。
-        n_value: n-gram の n。
+        records: ``abstract_level{L}.json`` の読み込み結果。
+        depths: 対象 depth 群（出力キーになる）。
+        n_value: n-gram の n（n=2 で bigram）。
 
     Returns:
-        ``(ids, sets)``。``ids`` は cutout_id のリスト（入力順）、``sets`` は
-        cutout_id → n-gram の frozenset。
+        ``{depth: {mb_id: frozenset(n-grams)}}``。 cutout が無い (mb_id, depth)
+        ペアはエントリ自体を持たない（``_build_patterns`` の挙動と整合）。
     """
+    table: dict[str, dict[int, frozenset]] = {d: {} for d in depths}
+    for entry in records:
+        mb_id = entry["id"]
+        cutouts = entry.get("cutouts", {})
+        for depth in depths:
+            cutout = cutouts.get(depth)
+            if not cutout:
+                continue
+            tokens = _tokens(cutout.get("nodes", []))
+            table[depth][mb_id] = frozenset(_ngrams(tokens, n_value))
+    return table
+
+
+def _build_patterns_from_table(
+    table: dict[str, dict[int, frozenset]],
+    depth: str,
+) -> tuple[list[str], dict[str, frozenset]]:
+    """テーブルから cutout_id 形式の ``(ids, sets)`` を切り出す。
+
+    既存 ``_build_patterns`` と同一の戻り値（ids の順序、 sets の中身）を保つ。
+    呼び出し側のクラスタリング処理は変更不要。
+    """
+    depth_table = table.get(depth, {})
     ids: list[str] = []
     sets: dict[str, frozenset] = {}
-    for entry in records:
-        cutout = entry.get("cutouts", {}).get(depth)
-        if not cutout:
-            continue
-        tokens = _tokens(cutout.get("nodes", []))
-        cutout_id = f"{entry['id']}_{depth}"
+    for mb_id, bg in depth_table.items():
+        cutout_id = f"{mb_id}_{depth}"
         ids.append(cutout_id)
-        sets[cutout_id] = frozenset(_ngrams(tokens, n_value))
+        sets[cutout_id] = bg
     return ids, sets
+
+
+def _ngrams_cache_path(input_dir: Path, level: int, n_value: int) -> Path:
+    """``abstract/bigrams_level{L}_n{N}.pkl`` のパスを返す。"""
+    return input_dir / f"bigrams_level{level}_n{n_value}.pkl"
+
+
+def _write_ngrams_cache(
+    input_dir: Path,
+    level: int,
+    n_value: int,
+    table: dict[str, dict[int, frozenset]],
+) -> Path:
+    """n-gram テーブルを pickle で書き出す（tmp → rename のアトミック書き）。
+
+    Args:
+        input_dir: abstract JSON があるディレクトリ（cache 配置先）。
+        level: 抽象化レベル。
+        n_value: n-gram の n。
+        table: ``_build_id_to_ngrams_table`` の戻り値。
+
+    Returns:
+        書き出した cache のパス。
+    """
+    cache_path = _ngrams_cache_path(input_dir, level, n_value)
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = cache_path.with_suffix(cache_path.suffix + ".tmp")
+    payload = {
+        "version": NGRAMS_CACHE_VERSION,
+        "level": level,
+        "n": n_value,
+        "schema": "abst_id_to_ngrams",
+        "data": table,
+    }
+    with tmp_path.open("wb") as f:
+        pickle.dump(payload, f, protocol=pickle.HIGHEST_PROTOCOL)
+    tmp_path.replace(cache_path)
+    print(f"[CACHE] wrote {cache_path}", flush=True)
+    return cache_path
 
 
 def process_level(
     level: int,
-    records: list[dict],
+    table: dict[str, dict[int, frozenset]],
     output_dir: Path,
     n_value: int,
     tau: float,
@@ -357,7 +424,7 @@ def process_level(
     level_dir.mkdir(parents=True, exist_ok=True)
 
     for depth in DEPTHS:
-        ids, sets = _build_patterns(records, depth, n_value)
+        ids, sets = _build_patterns_from_table(table, depth)
         classes = greedy_merge(level, ids, sets, n_value, tau, workers)
 
         out_path = level_dir / f"{depth}.json"
@@ -549,7 +616,7 @@ def _write_result(
 
 def process_level_server(
     level: int,
-    records: list[dict],
+    table: dict[str, dict[int, frozenset]],
     output_dir: Path,
     n_value: int,
     taus: list[float],
@@ -562,7 +629,7 @@ def process_level_server(
     """
     min_tau = min(taus)
     for depth in DEPTHS:
-        ids, sets = _build_patterns(records, depth, n_value)
+        ids, sets = _build_patterns_from_table(table, depth)
         empty_ids = [c for c in ids if not sets[c]]
         scored = _scored_pairs(ids, sets, min_tau, workers)
         for tau in taus:
@@ -636,10 +703,20 @@ def main() -> None:
         with in_path.open(encoding="utf-8") as f:
             records = json.load(f)
         print(f"[RECORDS] level{level}: {len(records)}", flush=True)
+
+        # 1 回だけ全 depth 分の n-gram テーブルを作り、 pickle に書き出す。
+        # Representative_value など下流の戦略は abstract JSON を読まずに
+        # この cache を消費できる。
+        table = _build_id_to_ngrams_table(records, DEPTHS, args.n)
+        _write_ngrams_cache(input_dir, level, args.n, table)
+        # records は table に取り込み済みのため、 メモリ解放して以降の処理に
+        # 影響しないようにする（abstract は数 GB 規模のため）。
+        del records
+
         if args.server:
-            process_level_server(level, records, output_dir, args.n, args.taus, workers)
+            process_level_server(level, table, output_dir, args.n, args.taus, workers)
         else:
-            process_level(level, records, output_dir, args.n, args.tau, workers)
+            process_level(level, table, output_dir, args.n, args.tau, workers)
 
 
 if __name__ == "__main__":
