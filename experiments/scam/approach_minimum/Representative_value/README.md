@@ -148,6 +148,28 @@ byte-identical（同点解消はすべて明示済み、frozenset → list 変�
 
 `--workers 1` で逐次フォールバック（デバッグ・テスト時）。
 
+## n-gram キャッシュ
+
+`abstract_level{L}.json` は各 2.6 GB ありパースが重いため、bigram テーブルは
+`integrate.py` がクラスタリング処理の副産物として pickle で書き出す:
+
+```
+outputs/scam/approach_minimum/abstract/bigrams_level{L}_n{N}.pkl
+```
+
+各戦略は `_common.load_id_to_bigrams_cached(config, level)` 経由でこの cache
+を読み、 abstract JSON を再パースしない（[BIGRAMS] cache hit のログを出す）。
+
+cache が `abstract_level{L}.json` より古い場合は自動的に abstract から
+計算する fallback 経路に入る（[BIGRAMS] cache miss → fallback (json)）。
+fallback は in-memory のみで pickle は書かない — cache の producer は
+`integrate.py` に一本化している。 abstract を再生成した後は次回 integrate
+実行時に cache も更新される。
+
+cache のスキーマバージョン（`integrate.py:NGRAMS_CACHE_VERSION` と
+`_common.py:NGRAMS_CACHE_VERSION`）を bump すると古い pickle は無視され、
+自動的に fallback 経路に倒れる。
+
 ## 実行例
 
 個別実行:
