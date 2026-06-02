@@ -1,7 +1,7 @@
 """integrate クラスタの各メンバーに value 列を付与してクラスごとに列挙する。
 
 入力:
-    クラスタ結果: outputs/scam/approach_minimum/integrate/{tau_dir}/level{L}/{depth}.json
+    クラスタ結果: outputs/scam/approach_minimum/integrate/{tau_dir}/level{L}/{depth}/{depth}.json
         ``{"meta": {...}, "classes": {class_id: ["{id}_{depth}", ...]}}``
     抽象化:      outputs/scam/approach_minimum/abstract/abstract_level{L}.json
         ``[{"id": int, "cutouts": {depth: {"nodes": [...]}}}]``
@@ -12,7 +12,7 @@
     列挙する。
 
 出力:
-    outputs/scam/approach_minimum/integrate/{tau_dir}/level{L}/{depth}_label.json
+    outputs/scam/approach_minimum/integrate/{tau_dir}/level{L}/{depth}/{depth}_label.json
         ``{class_id: [{"id": int, "value": str}, ...]}``
 
 実行例:
@@ -167,14 +167,14 @@ def main() -> None:
         id_to_cutouts: dict[int, dict[str, Any]] = {entry["id"]: entry["cutouts"] for entry in records}
 
         for depth in DEPTHS:
-            cluster_path = integrate_dir / f"level{level}" / f"{depth}.json"
+            cluster_path = integrate_dir / f"level{level}" / f"{depth}" / f"{depth}.json"
             if not cluster_path.exists():
                 print(f"[SKIP] cluster not found: {cluster_path}", flush=True)
                 continue
             cluster = hayalab.read_json(str(cluster_path))
             class_labels = build_class_labels(cluster, depth, id_to_cutouts)
 
-            out_path = integrate_dir / f"level{level}" / f"{depth}_label.json"
+            out_path = integrate_dir / f"level{level}" / f"{depth}" / f"{depth}_label.json"
             out_path.parent.mkdir(parents=True, exist_ok=True)
             hayalab.write_json(str(out_path), class_labels)
             print(f"[OUTPUT] {out_path}  (classes={len(class_labels)})", flush=True)

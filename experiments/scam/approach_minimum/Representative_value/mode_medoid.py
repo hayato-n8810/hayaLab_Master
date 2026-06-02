@@ -10,12 +10,12 @@ r"""戦略 1: mode + medoid 二段構えで各クラスの代表 value を選ぶ
 bigram の定義は ``integrate.py`` と完全に同一（``_common.bigrams_from_nodes``）。
 
 入力:
-    cluster:  ``outputs/scam/approach_minimum/integrate/{tau_dir}/level{L}/{depth}.json``
+    cluster:  ``outputs/scam/approach_minimum/integrate/{tau_dir}/level{L}/{depth}/{depth}.json``
     label:    ``..._label.json``
     abstract: ``outputs/scam/approach_minimum/abstract/abstract_level{L}.json``
 
 出力:
-    ``{tau_dir}/level{L}/{depth}_pattern_mode_medoid.json``
+    ``{tau_dir}/level{L}/{depth}/{depth}_pattern_mode_medoid.json``
 
 スキーマ::
 

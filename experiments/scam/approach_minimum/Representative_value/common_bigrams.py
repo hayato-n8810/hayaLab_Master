@@ -14,12 +14,12 @@ r"""戦略 2: クラス内 bigram の intersection を抽出して代表とす�
 bigram 定義は ``integrate.py`` と同一。
 
 入力:
-    cluster:  ``outputs/scam/approach_minimum/integrate/{tau_dir}/level{L}/{depth}.json``
+    cluster:  ``outputs/scam/approach_minimum/integrate/{tau_dir}/level{L}/{depth}/{depth}.json``
     label:    ``..._label.json``（class_id 順の保存に利用）
     abstract: ``outputs/scam/approach_minimum/abstract/abstract_level{L}.json``
 
 出力:
-    ``{tau_dir}/level{L}/{depth}_pattern_common_bigrams.json``
+    ``{tau_dir}/level{L}/{depth}/{depth}_pattern_common_bigrams.json``
 
 スキーマ::
 

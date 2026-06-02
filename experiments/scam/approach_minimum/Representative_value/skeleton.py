@@ -22,11 +22,11 @@ label JSON の value 文字列 (``$v0`` 等のスロット記号を含む空白�
 多数を占める）では十分機能する。
 
 入力:
-    label: ``outputs/scam/approach_minimum/integrate/{tau_dir}/level{L}/{depth}_label.json``
+    label: ``outputs/scam/approach_minimum/integrate/{tau_dir}/level{L}/{depth}/{depth}_label.json``
         ``{class_id: [{"id": int, "value": str}, ...]}``
 
 出力:
-    ``{tau_dir}/level{L}/{depth}_pattern_skeleton.json``
+    ``{tau_dir}/level{L}/{depth}/{depth}_pattern_skeleton.json``
 
 スキーマ::
 

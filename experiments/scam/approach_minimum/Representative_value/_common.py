@@ -9,9 +9,9 @@ integrate.py のクラスタ結果と show_label.py の label を入力に、各
   決定する（ライブラリは I/O パスを決定しない原則）。
 
 データ前提:
-    入力 cluster: ``outputs/scam/approach_minimum/integrate/{tau_dir}/level{L}/{depth}.json``
+    入力 cluster: ``outputs/scam/approach_minimum/integrate/{tau_dir}/level{L}/{depth}/{depth}.json``
         ``{"meta": {...}, "classes": {class_id: ["{id}_{depth}", ...]}}``
-    入力 label:   ``outputs/scam/approach_minimum/integrate/{tau_dir}/level{L}/{depth}_label.json``
+    入力 label:   ``outputs/scam/approach_minimum/integrate/{tau_dir}/level{L}/{depth}/{depth}_label.json``
         ``{class_id: [{"id": int, "value": str}, ...]}``
     入力 abstract: ``outputs/scam/approach_minimum/abstract/abstract_level{L}.json``
         ``[{"id": int, "cutouts": {depth: {"nodes": [...]}}}]``
@@ -90,6 +90,37 @@ def load_id_to_bigrams(records: list[dict[str, Any]], depth: str) -> dict[int, f
         nodes = cutout.get("nodes", []) if cutout else []
         out[entry["id"]] = bigrams_from_nodes(nodes)
     return out
+
+
+def load_id_to_tokens(
+    config: PathConfig,
+    level: int,
+) -> dict[str, dict[int, list[tuple[str, str]]]] | None:
+    """Abstract JSON から ``{depth: {mb_id: [(name, normalized_value), ...]}}`` を作る.
+
+    bigram 構築の元となる **AST node token 列**（``tokens_from_nodes``）をそのまま
+    位置情報付きで保持する。 bigram cache は順序を捨てて frozenset 化しているため
+    位置別の skeleton 計算には使えず、 ここでは abstract JSON を直接読む。
+
+    Returns:
+        各 depth の ``{mb_id: [(name, normalized_value), ...]}``。
+        abstract JSON が無ければ ``None``。
+    """
+    abs_p = abstract_path(config, level)
+    if not abs_p.exists():
+        return None
+    print(f"[TOKENS] reading abstract: {abs_p}", flush=True)
+    records = hayalab.read_json(str(abs_p))
+    table: dict[str, dict[int, list[tuple[str, str]]]] = {d: {} for d in DEPTHS}
+    for entry in records:
+        mb_id = entry["id"]
+        cutouts = entry.get("cutouts", {})
+        for depth in DEPTHS:
+            cutout = cutouts.get(depth)
+            if not cutout:
+                continue
+            table[depth][mb_id] = tokens_from_nodes(cutout.get("nodes", []))
+    return table
 
 
 def integrate_dir(config: PathConfig, tau_dir: str) -> Path:
@@ -181,36 +212,21 @@ def load_id_to_bigrams_cached(
     return table
 
 
-def cluster_paths(
-    config: PathConfig,
-    tau_dir: str,
-    level: int,
-    depth: str,
-) -> tuple[Path, Path]:
-    """``({depth}.json, {depth}_label.json)`` のペアを返す."""
-    base = integrate_dir(config, tau_dir) / f"level{level}"
-    return base / f"{depth}.json", base / f"{depth}_label.json"
-
-
-def output_path(
-    config: PathConfig,
-    tau_dir: str,
-    level: int,
-    depth: str,
-    strategy: str,
-) -> Path:
-    """戦略別の出力パスを返す（``{depth}_pattern_{strategy}.json``）."""
-    return integrate_dir(config, tau_dir) / f"level{level}" / f"{depth}_pattern_{strategy}.json"
-
-
 def read_inputs(
     config: PathConfig,
     tau_dir: str,
     level: int,
     depth: str,
 ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
-    """Cluster と label を読み、片方でも欠けていれば ``(None, None)`` を返す."""
-    cluster_p, label_p = cluster_paths(config, tau_dir, level, depth)
+    """Cluster と label を読み、片方でも欠けていれば ``(None, None)`` を返す.
+
+    パス: ``integrate/{tau_dir}/level{L}/{depth}/{depth}.json`` および
+    ``..._label.json``。 これは ``integrate.py`` と ``show_label.py`` の
+    出力規約と一致（depth 名のサブディレクトリにネストする）。
+    """
+    base = integrate_dir(config, tau_dir) / f"level{level}" / f"{depth}"
+    cluster_p, label_p = base / f"{depth}.json", base / f"{depth}_label.json"
+
     if not cluster_p.exists() or not label_p.exists():
         return None, None
     return hayalab.read_json(str(cluster_p)), hayalab.read_json(str(label_p))
@@ -225,7 +241,7 @@ def write_output(
     payload: dict[str, Any],
 ) -> Path:
     """戦略別出力 JSON を書き出してパスを返す."""
-    out = output_path(config, tau_dir, level, depth, strategy)
+    out = integrate_dir(config, tau_dir) / f"level{level}" / f"{depth}" / f"{depth}_pattern_{strategy}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     hayalab.write_json(str(out), payload)
     return out
