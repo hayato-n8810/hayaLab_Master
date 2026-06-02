@@ -769,7 +769,7 @@ def main() -> None:
                 print(f"[SKIP] not found: {in_path}", flush=True)
                 continue
             print(f"[INPUT] {in_path}", flush=True)
-            records = hayalab.readjson(in_path)
+            records = hayalab.read_json(in_path)
             print(f"[RECORDS] level{level}: {len(records)}", flush=True)
             table = _build_id_to_ngrams_table(records, DEPTHS, args.n)
             # records は table に取り込み済みのため、 メモリ解放して以降の処理に
