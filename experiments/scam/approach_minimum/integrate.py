@@ -53,6 +53,8 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from hashlib import sha256
 from pathlib import Path
 
+import hayalab
+
 logger = logging.getLogger(__name__)
 
 # cutout depth の順序（出力スキーマ安定化のため固定）。
@@ -377,6 +379,50 @@ def _ngrams_cache_path(input_dir: Path, level: int, n_value: int) -> Path:
     return input_dir / f"bigrams_level{level}_n{n_value}.pkl"
 
 
+def _is_cache_fresh(cache_path: Path, source_path: Path) -> bool:
+    """``cache_path`` が存在し ``source_path`` 以降の mtime ならば ``True``。
+
+    どちらかが欠けていれば次の通り扱う:
+
+    * cache 不在 ⇒ ``False``（rebuild 必要）
+    * source 不在 & cache あり ⇒ ``True`` として扱う（source 無しで cache の
+      新旧判定は不能だが、 fallback は abstract 読み込みになり結局 SKIP するため
+      ここで True を返しても下流挙動は安全）
+    """
+    if not cache_path.exists():
+        return False
+    if not source_path.exists():
+        return True
+    return cache_path.stat().st_mtime >= source_path.stat().st_mtime
+
+
+def _load_ngrams_cache(cache_path: Path) -> dict[str, dict[int, frozenset]]:
+    """Pickle を読み、 version が一致すれば ``data`` 部を返す。
+
+    Args:
+        cache_path: pickle のパス。
+
+    Returns:
+        ``{depth: {mb_id: frozenset(n-grams)}}``。
+
+    Raises:
+        ValueError: pickle の ``version`` が ``NGRAMS_CACHE_VERSION`` と
+            一致しない / ``schema`` が想定外 / 形が壊れている場合。
+    """
+    with cache_path.open("rb") as f:
+        payload = pickle.load(f)  # noqa: S301 -- 自己生成のローカル cache
+    if not isinstance(payload, dict):
+        raise ValueError(f"unexpected payload type: {type(payload).__name__}")
+    if payload.get("version") != NGRAMS_CACHE_VERSION:
+        raise ValueError(f"version mismatch: {payload.get('version')!r} != {NGRAMS_CACHE_VERSION}")
+    if payload.get("schema") != "abst_id_to_ngrams":
+        raise ValueError(f"schema mismatch: {payload.get('schema')!r}")
+    data = payload.get("data")
+    if not isinstance(data, dict):
+        raise ValueError(f"unexpected data type: {type(data).__name__}")
+    return data
+
+
 def _write_ngrams_cache(
     input_dir: Path,
     level: int,
@@ -440,8 +486,7 @@ def process_level(
             },
             "classes": classes,
         }
-        with out_path.open("w", encoding="utf-8") as f:
-            json.dump(payload, f, ensure_ascii=False, indent=2)
+        hayalab.write_json(out_path, payload)
         print(
             f"[OUTPUT] {out_path}  (patterns={len(ids)} → classes={len(classes)})",
             flush=True,
@@ -606,8 +651,7 @@ def _write_result(
         },
         "classes": classes,
     }
-    with out_path.open("w", encoding="utf-8") as f:
-        json.dump(payload, f, ensure_ascii=False, indent=2)
+    hayalab.write_json(out_path, payload)
     print(
         f"[OUTPUT] {out_path}  (patterns={num_patterns} → classes={len(classes)})",
         flush=True,
@@ -634,7 +678,7 @@ def process_level_server(
         scored = _scored_pairs(ids, sets, min_tau, workers)
         for tau in taus:
             classes = _merge_scored(level, ids, scored, empty_ids, n_value, tau)
-            out_path = output_dir / _tau_dirname(tau) / f"level{level}" / f"{depth}.json"
+            out_path = output_dir / _tau_dirname(tau) / f"level{level}" / f"{depth}" / f"{depth}.json"
             _write_result(out_path, level, depth, n_value, tau, len(ids), classes)
 
 
@@ -675,6 +719,13 @@ def parse_args() -> argparse.Namespace:
         default=[0.5, 0.7, 0.9],
         help="server モードで一括処理する Jaccard 閾値群 (default: 0.5 0.7 0.9)",
     )
+    parser.add_argument(
+        "--create-cache",
+        action="store_true",
+        help=(
+            "bigram cache pickle (bigrams_level{L}_n{N}.pkl) を生成・更新する。未指定なら cache は読むのみで書かない（in-memory rebuild）。初回・abstract 更新時・ロジック変更時に明示指定する想定。"
+        ),
+    )
     return parser.parse_args()
 
 
@@ -696,22 +747,41 @@ def main() -> None:
 
     for level in args.levels:
         in_path = input_dir / f"abstract_level{level}.json"
-        if not in_path.exists():
-            print(f"[SKIP] not found: {in_path}", flush=True)
-            continue
-        print(f"[INPUT] {in_path}", flush=True)
-        with in_path.open(encoding="utf-8") as f:
-            records = json.load(f)
-        print(f"[RECORDS] level{level}: {len(records)}", flush=True)
+        cache_path = _ngrams_cache_path(input_dir, level, args.n)
 
-        # 1 回だけ全 depth 分の n-gram テーブルを作り、 pickle に書き出す。
-        # Representative_value など下流の戦略は abstract JSON を読まずに
-        # この cache を消費できる。
-        table = _build_id_to_ngrams_table(records, DEPTHS, args.n)
-        _write_ngrams_cache(input_dir, level, args.n, table)
-        # records は table に取り込み済みのため、 メモリ解放して以降の処理に
-        # 影響しないようにする（abstract は数 GB 規模のため）。
-        del records
+        # 1. --create-cache 未指定 かつ cache が新鮮なら pickle から load して
+        #    JSON 読みをスキップする。
+        table: dict[str, dict[int, frozenset]] | None = None
+        if not args.create_cache and _is_cache_fresh(cache_path, in_path):
+            try:
+                table = _load_ngrams_cache(cache_path)
+                print(f"[CACHE] fresh, loading from pickle: {cache_path}", flush=True)
+            except (ValueError, pickle.UnpicklingError, EOFError) as e:
+                print(
+                    f"[CACHE] load failed ({e}), falling back to JSON",
+                    flush=True,
+                )
+                table = None
+
+        # 2. table 未取得（cache 不在 / 古い / 破損 / --create-cache 指定）。
+        if table is None:
+            if not in_path.exists():
+                print(f"[SKIP] not found: {in_path}", flush=True)
+                continue
+            print(f"[INPUT] {in_path}", flush=True)
+            records = hayalab.readjson(in_path)
+            print(f"[RECORDS] level{level}: {len(records)}", flush=True)
+            table = _build_id_to_ngrams_table(records, DEPTHS, args.n)
+            # records は table に取り込み済みのため、 メモリ解放して以降の処理に
+            # 影響しないようにする（abstract は数 GB 規模のため）。
+            del records
+            if args.create_cache:
+                _write_ngrams_cache(input_dir, level, args.n, table)
+            else:
+                print(
+                    "[CACHE] no cache write (use --create-cache to persist)",
+                    flush=True,
+                )
 
         if args.server:
             process_level_server(level, table, output_dir, args.n, args.taus, workers)
