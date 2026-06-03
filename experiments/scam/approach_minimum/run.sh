@@ -86,12 +86,12 @@ for tau_dir in ${TAU_DIRS}; do
         --k "${SKELETON_K}" \
         --workers ${WORKERS}
 
-    # 戦略 2: 共通 bigram （cache hit）
-    python3 "${REPV}/common_bigrams.py" \
-        --tau-dir "${tau_dir}" \
-        --levels ${LEVELS} \
-        --depths ${DEPTHS} \
-        --workers ${WORKERS}
+    # # 戦略 2: 共通 bigram （cache hit）
+    # python3 "${REPV}/common_bigrams.py" \
+    #     --tau-dir "${tau_dir}" \
+    #     --levels ${LEVELS} \
+    #     --depths ${DEPTHS} \
+    #     --workers ${WORKERS}
 
     # 戦略 3: mode + medoid （cache hit）
     python3 "${REPV}/mode_medoid.py" \

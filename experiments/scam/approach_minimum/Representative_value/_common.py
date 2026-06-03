@@ -37,7 +37,8 @@ DEPTHS: tuple[str, ...] = ("Diff", "Brother", "ExParent", "Parent")
 _SLOT_NUM_RE = re.compile(r"^\$([vfkns])\d+$")
 
 # integrate.py の ``NGRAMS_CACHE_VERSION`` と整合させる。
-NGRAMS_CACHE_VERSION = 1
+NGRAMS_CACHE_VERSION = 2
+NGRAMS_CACHE_SCHEMA = "abst_id_to_features_v2"
 
 
 def normalize_value(value: str | None) -> str:
@@ -185,7 +186,7 @@ def load_id_to_bigrams_cached(
     if _is_cache_fresh(cache_p, abs_p):
         with cache_p.open("rb") as f:
             payload = pickle.load(f)  # noqa: S301 -- 自己生成のローカル cache
-        if payload.get("version") == NGRAMS_CACHE_VERSION and payload.get("schema") == "abst_id_to_ngrams":
+        if payload.get("version") == NGRAMS_CACHE_VERSION and payload.get("schema") == NGRAMS_CACHE_SCHEMA:
             print(f"[BIGRAMS] cache hit: {cache_p}", flush=True)
             data = payload["data"]
             # 防御的コピー: depth キーが想定外でも欠落キーは空辞書を返したい。
