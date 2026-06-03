@@ -1,4 +1,4 @@
-"""approach_minimum 統合: 三本立て (bigram Jaccard + singleton 完全一致 + empty 除外).
+"""approach_minimum 統合: 三本立て (bigram Jaccard + unigram 完全一致 + empty 除外).
 
 処理概要:
 
@@ -8,13 +8,13 @@
 
    * ``n_t == 0``           → 除外（クラスタ生成対象外）。 cutout は存在するが
      全ノードが variadic で抽象化後に有効トークンが残らないケース。
-   * ``0 < n_t < n``        → singleton: token tuple 完全一致で grouping。
+   * ``0 < n_t < n``        → unigram: token tuple 完全一致で grouping。
      既定 ``n=2`` のとき ``n_t == 1`` のみ該当。
    * ``n_t >= n``           → bigram: Jaccard 係数 ≥ tau で貪欲併合。
 
-3. depth ごとに「bigram クラスタ」+「singleton クラスタ」を 1 つの ``classes``
+3. depth ごとに「bigram クラスタ」+「unigram クラスタ」を 1 つの ``classes``
    辞書に統合して JSON で書き出す。 ``class_id`` の prefix で由来を判別できる
-   (``L*_M2_*``: bigram, ``L*_S1_*``: singleton)。
+   (``L*_M2_*``: bigram, ``L*_U1_*``: unigram)。
 
 トークン化規約 (m2_path_ngram.py と共通):
 
@@ -38,12 +38,12 @@ cutout_id は ``"{mb_id}_{depth}"`` 形式。 depth ごとに独立して併合�
     {
         "meta": {
             "level": int, "depth": str, "n": int, "tau": float,
-            "mode": "jaccard+singleton",
+            "mode": "jaccard+unigram",
             "num_bigram_patterns": int,
-            "num_singleton_patterns": int,
+            "num_unigram_patterns": int,
             "num_excluded_empty": int,
             "num_bigram_classes": int,
-            "num_singleton_classes": int,
+            "num_unigram_classes": int,
             "num_classes": int,
         },
         "classes": {class_id: [cutout_id, ...], ...}
@@ -52,18 +52,18 @@ cutout_id は ``"{mb_id}_{depth}"`` 形式。 depth ごとに独立して併合�
 class_id prefix:
 
 * ``L{level}_M2_{hash8}``: bigram Jaccard 由来のクラスタ。
-* ``L{level}_S1_{hash8}``: singleton 完全一致 由来のクラスタ。
+* ``L{level}_U1_{hash8}``: unigram 完全一致 由来のクラスタ。
 
-Cache pickle (v2):
+Cache pickle (v3):
     outputs/scam/approach_minimum/abstract/bigrams_level{L}_n{N}.pkl
     {
-        "version": 2,
-        "schema": "abst_id_to_features_v2",
+        "version": 3,
+        "schema": "abst_id_to_features_v3",
         "level": L,
         "n": N,
-        "bigrams":    {depth: {mb_id: frozenset(bigrams)}},  # n_t >= n のみ
-        "singletons": {depth: {mb_id: tuple(tokens)}},       # 0 < n_t < n のみ
-        "excluded":   {depth: int},                          # n_t == 0 の件数
+        "bigrams":  {depth: {mb_id: frozenset(bigrams)}},  # n_t >= n のみ
+        "unigrams": {depth: {mb_id: tuple(tokens)}},       # 0 < n_t < n のみ
+        "excluded": {depth: int},                          # n_t == 0 の件数
     }
 
 実行例:
@@ -94,7 +94,7 @@ DEPTHS: tuple[str, ...] = ("Diff", "Brother", "ExParent", "Parent")
 ROOT = Path(__file__).resolve().parents[3]
 
 # Features cache のスキーマバージョン。v1 (旧 ``abst_id_to_ngrams``) からは
-# bigram + singleton + excluded の三本立てに切り替わるため version を bump し、
+# bigram + unigram + excluded の三本立て
 # 互換性のない古い cache は自動的に invalid 扱いとなる。
 NGRAMS_CACHE_VERSION = 2
 NGRAMS_CACHE_SCHEMA = "abst_id_to_features_v2"
@@ -192,7 +192,7 @@ def _make_class_id(level: int, content: str, prefix: str) -> str:
     Args:
         level: 抽象化レベル。
         content: ハッシュ元の文字列（生成戦略 + メンバー情報を含む）。
-        prefix: 由来を示す短い識別子 (``M2``: bigram, ``S1``: singleton)。
+        prefix: 由来を示す短い識別子 (``M2``: bigram, ``U1``: unigram)。
     """
     return f"L{level}_{prefix}_{_content_hash(content)}"
 
@@ -203,7 +203,7 @@ def _pair_hash(a: str, b: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Feature extraction (三本立て: bigram / singleton / excluded)
+# Feature extraction (三本立て: bigram / unigram / excluded)
 # ---------------------------------------------------------------------------
 
 
@@ -222,7 +222,7 @@ def _extract_features(
 
     * ``n_t == 0``           → ``excluded[depth]`` の件数に算入し、何も登録しない。
     * ``n_t >= n_value``     → ``bigrams[depth][mb_id]`` に bigram frozenset を格納。
-    * ``0 < n_t < n_value``  → ``singletons[depth][mb_id]`` に token tuple を格納。
+    * ``0 < n_t < n_value``  → ``unigrams[depth][mb_id]`` に token tuple を格納。
 
     Args:
         records: ``abstract_level{L}.json`` の読み込み結果。
@@ -230,11 +230,11 @@ def _extract_features(
         n_value: n-gram の n（既定 2）。
 
     Returns:
-        ``(bigrams, singletons, excluded)``。 ``cutout`` 自体が存在しない
+        ``(bigrams, unigrams, excluded)``。 ``cutout`` 自体が存在しない
         ``(mb_id, depth)`` ペアはどのテーブルにも現れない（既存挙動と整合）。
     """
     bigrams: dict[str, dict[int, frozenset]] = {d: {} for d in depths}
-    singletons: dict[str, dict[int, tuple[tuple[str, str], ...]]] = {d: {} for d in depths}
+    unigrams: dict[str, dict[int, tuple[tuple[str, str], ...]]] = {d: {} for d in depths}
     excluded: dict[str, int] = {d: 0 for d in depths}
 
     for entry in records:
@@ -251,8 +251,8 @@ def _extract_features(
             elif n_t >= n_value:
                 bigrams[depth][mb_id] = frozenset(_ngrams(tokens, n_value))
             else:
-                singletons[depth][mb_id] = tuple(tokens)
-    return bigrams, singletons, excluded
+                unigrams[depth][mb_id] = tuple(tokens)
+    return bigrams, unigrams, excluded
 
 
 # ---------------------------------------------------------------------------
@@ -285,7 +285,7 @@ def _load_features_cache(
     dict[str, dict[int, tuple[tuple[str, str], ...]]],
     dict[str, int],
 ]:
-    """Pickle を読み、 version/schema が一致すれば ``(bigrams, singletons, excluded)`` を返す。
+    """Pickle を読み、 version/schema が一致すれば ``(bigrams, unigrams, excluded)`` を返す。
 
     Raises:
         ValueError: payload の型 / version / schema が想定外のとき。
@@ -299,11 +299,11 @@ def _load_features_cache(
     if payload.get("schema") != NGRAMS_CACHE_SCHEMA:
         raise ValueError(f"schema mismatch: {payload.get('schema')!r}")
     bigrams = payload.get("bigrams")
-    singletons = payload.get("singletons")
+    unigrams = payload.get("unigrams")
     excluded = payload.get("excluded", {d: 0 for d in DEPTHS})
-    if not isinstance(bigrams, dict) or not isinstance(singletons, dict):
-        raise ValueError("missing 'bigrams' or 'singletons' in cache payload")
-    return bigrams, singletons, excluded
+    if not isinstance(bigrams, dict) or not isinstance(unigrams, dict):
+        raise ValueError("missing 'bigrams' or 'unigrams' in cache payload")
+    return bigrams, unigrams, excluded
 
 
 def _write_features_cache(
@@ -311,7 +311,7 @@ def _write_features_cache(
     level: int,
     n_value: int,
     bigrams: dict[str, dict[int, frozenset]],
-    singletons: dict[str, dict[int, tuple[tuple[str, str], ...]]],
+    unigrams: dict[str, dict[int, tuple[tuple[str, str], ...]]],
     excluded: dict[str, int],
 ) -> Path:
     """Features を pickle で書き出す（tmp → rename のアトミック書き）。"""
@@ -324,7 +324,7 @@ def _write_features_cache(
         "level": level,
         "n": n_value,
         "bigrams": bigrams,
-        "singletons": singletons,
+        "unigrams": unigrams,
         "excluded": excluded,
     }
     with tmp_path.open("wb") as f:
@@ -360,36 +360,36 @@ def _build_bigram_patterns(
 
 
 # ---------------------------------------------------------------------------
-# Singleton grouping (exact-match)
+# Unigram grouping (exact-match)
 # ---------------------------------------------------------------------------
 
 
-def _group_singletons(
+def _group_unigrams(
     level: int,
     depth: str,
-    singletons_depth: dict[int, tuple[tuple[str, str], ...]],
+    unigrams_depth: dict[int, tuple[tuple[str, str], ...]],
 ) -> dict[str, list[str]]:
     """Token tuple 完全一致で grouping し、 ``{class_id: [cutout_id, ...]}`` を返す。
 
     Args:
         level: 抽象化レベル。
         depth: 対象 depth（cutout_id 構築に使用）。
-        singletons_depth: ``{mb_id: tuple(tokens)}``。 token tuple の長さは
+        unigrams_depth: ``{mb_id: tuple(tokens)}``。 token tuple の長さは
             ``1`` 以上 ``n_value`` 未満（既定 ``n=2`` ではすべて長さ 1）。
 
     Returns:
         ``{class_id: sorted member cutout_ids}``（決定的順序）。
     """
     buckets: dict[tuple, list[str]] = {}
-    for mb_id, key in singletons_depth.items():
+    for mb_id, key in unigrams_depth.items():
         cutout_id = f"{mb_id}_{depth}"
         buckets.setdefault(key, []).append(cutout_id)
     classes: dict[str, list[str]] = {}
     for key in sorted(buckets):
         members = sorted(buckets[key])
         key_repr = "|".join(f"{name}:{value}" for name, value in key)
-        content = f"singleton:{key_repr}:{','.join(members)}"
-        class_id = _make_class_id(level, content, prefix="S1")
+        content = f"unigram:{key_repr}:{','.join(members)}"
+        class_id = _make_class_id(level, content, prefix="U1")
         classes[class_id] = members
     return classes
 
@@ -623,39 +623,39 @@ def _write_result(
     n_value: int,
     tau: float,
     num_bigram_patterns: int,
-    num_singleton_patterns: int,
+    num_unigram_patterns: int,
     num_excluded_empty: int,
     bigram_classes: dict[str, list[str]],
-    singleton_classes: dict[str, list[str]],
+    unigram_classes: dict[str, list[str]],
 ) -> None:
-    """1 (tau, level, depth) の bigram + singleton クラスタを統合 JSON で書き出す。
+    """1 (tau, level, depth) の bigram + unigram クラスタを統合 JSON で書き出す。
 
-    bigram と singleton のクラスタは class_id の prefix（``M2`` / ``S1``）で
+    bigram と unigram のクラスタは class_id の prefix（``M2`` / ``U1``）で
     判別可能なため、 1 つの ``classes`` 辞書に統合して出力する。
     """
     out_path.parent.mkdir(parents=True, exist_ok=True)
     classes: dict[str, list[str]] = {}
     classes.update(bigram_classes)
-    classes.update(singleton_classes)
+    classes.update(unigram_classes)
     payload = {
         "meta": {
             "level": level,
             "depth": depth,
             "n": n_value,
             "tau": tau,
-            "mode": "jaccard+singleton",
+            "mode": "jaccard+unigram",
             "num_bigram_patterns": num_bigram_patterns,
-            "num_singleton_patterns": num_singleton_patterns,
+            "num_unigram_patterns": num_unigram_patterns,
             "num_excluded_empty": num_excluded_empty,
             "num_bigram_classes": len(bigram_classes),
-            "num_singleton_classes": len(singleton_classes),
+            "num_unigram_classes": len(unigram_classes),
             "num_classes": len(classes),
         },
         "classes": classes,
     }
     hayalab.write_json(out_path, payload)
     print(
-        f"[OUTPUT] {out_path}  (bigram: {num_bigram_patterns}→{len(bigram_classes)}, singleton: {num_singleton_patterns}→{len(singleton_classes)}, excluded: {num_excluded_empty})",
+        f"[OUTPUT] {out_path}  (bigram: {num_bigram_patterns}→{len(bigram_classes)}, unigram: {num_unigram_patterns}→{len(unigram_classes)}, excluded: {num_excluded_empty})",
         flush=True,
     )
 
@@ -668,7 +668,7 @@ def _write_result(
 def process_level(
     level: int,
     bigrams_table: dict[str, dict[int, frozenset]],
-    singletons_table: dict[str, dict[int, tuple[tuple[str, str], ...]]],
+    unigrams_table: dict[str, dict[int, tuple[tuple[str, str], ...]]],
     excluded_table: dict[str, int],
     output_dir: Path,
     n_value: int,
@@ -681,11 +681,11 @@ def process_level(
 
     for depth in DEPTHS:
         ids, sets = _build_bigram_patterns(bigrams_table, depth)
-        singletons_d = singletons_table.get(depth, {})
+        unigrams_d = unigrams_table.get(depth, {})
         excluded_d = excluded_table.get(depth, 0)
 
         bigram_classes = greedy_merge_bigrams(level, ids, sets, n_value, tau, workers)
-        singleton_classes = _group_singletons(level, depth, singletons_d)
+        unigram_classes = _group_unigrams(level, depth, unigrams_d)
 
         out_path = level_dir / f"{depth}.json"
         _write_result(
@@ -695,17 +695,17 @@ def process_level(
             n_value,
             tau,
             len(ids),
-            len(singletons_d),
+            len(unigrams_d),
             excluded_d,
             bigram_classes,
-            singleton_classes,
+            unigram_classes,
         )
 
 
 def process_level_server(
     level: int,
     bigrams_table: dict[str, dict[int, frozenset]],
-    singletons_table: dict[str, dict[int, tuple[tuple[str, str], ...]]],
+    unigrams_table: dict[str, dict[int, tuple[tuple[str, str], ...]]],
     excluded_table: dict[str, int],
     output_dir: Path,
     n_value: int,
@@ -714,18 +714,18 @@ def process_level_server(
 ) -> None:
     """Server モード: depth ごと・複数 tau を一括処理する。
 
-    Singleton クラスタは tau 非依存のため depth ごとに 1 回計算し、全 tau で共有する。
+    Unigram クラスタは tau 非依存のため depth ごとに 1 回計算し、全 tau で共有する。
     Bigram クラスタは ``min(taus)`` で類似度を 1 回だけ計算し、 tau ごとにフィルタ
     して併合する（候補ペア計算を並列化）。
     """
     min_tau = min(taus)
     for depth in DEPTHS:
         ids, sets = _build_bigram_patterns(bigrams_table, depth)
-        singletons_d = singletons_table.get(depth, {})
+        unigrams_d = unigrams_table.get(depth, {})
         excluded_d = excluded_table.get(depth, 0)
 
-        # tau 非依存パート: singleton clusters
-        singleton_classes = _group_singletons(level, depth, singletons_d)
+        # tau 非依存パート: unigram clusters
+        unigram_classes = _group_unigrams(level, depth, unigrams_d)
         # tau 共通パート: 候補ペアの類似度を 1 回だけ計算
         scored = _scored_pairs(ids, sets, min_tau, workers)
 
@@ -739,10 +739,10 @@ def process_level_server(
                 n_value,
                 tau,
                 len(ids),
-                len(singletons_d),
+                len(unigrams_d),
                 excluded_d,
                 bigram_classes,
-                singleton_classes,
+                unigram_classes,
             )
 
 
@@ -754,7 +754,7 @@ def process_level_server(
 def parse_args() -> argparse.Namespace:
     """CLI 引数を解析する。"""
     parser = argparse.ArgumentParser(
-        description=("approach_minimum integrate: bigram Jaccard 貪欲併合 + singleton 完全一致 grouping (len=0 cutouts は除外)"),
+        description=("approach_minimum integrate: bigram Jaccard 貪欲併合 + unigram 完全一致 grouping (len=0 cutouts は除外)"),
     )
     parser.add_argument("--input-dir", type=Path, default=None, help="abstract_level{L}.json 置き場")
     parser.add_argument("--output-dir", type=Path, default=None, help="integrate 出力ディレクトリ")
@@ -769,7 +769,7 @@ def parse_args() -> argparse.Namespace:
         "--n",
         type=int,
         default=2,
-        help=("n-gram の n (default: 2 = bigram)。 len(tokens) >= n の cutout を bigram 路線、 0 < len(tokens) < n の cutout を singleton 路線に振り分ける。"),
+        help=("n-gram の n (default: 2 = bigram)。 len(tokens) >= n の cutout を bigram 路線、 0 < len(tokens) < n の cutout を unigram 路線に振り分ける。"),
     )
     parser.add_argument("--tau", type=float, default=0.7, help="Jaccard 閾値 (default: 0.7)。通常モードのみ")
     parser.add_argument(
@@ -845,12 +845,12 @@ def main() -> None:
             else:
                 print("[CACHE] no cache write (use --create-cache to persist)", flush=True)
 
-        bigrams_table, singletons_table, excluded_table = features
+        bigrams_table, unigrams_table, excluded_table = features
 
         # 振り分け件数のログ
         for depth in DEPTHS:
             print(
-                f"[FEATURES] level{level} {depth}: bigram={len(bigrams_table.get(depth, {}))}, singleton={len(singletons_table.get(depth, {}))}, excluded(empty)={excluded_table.get(depth, 0)}",
+                f"[FEATURES] level{level} {depth}: bigram={len(bigrams_table.get(depth, {}))}, unigram={len(unigrams_table.get(depth, {}))}, excluded(empty)={excluded_table.get(depth, 0)}",
                 flush=True,
             )
 
@@ -858,7 +858,7 @@ def main() -> None:
             process_level_server(
                 level,
                 bigrams_table,
-                singletons_table,
+                unigrams_table,
                 excluded_table,
                 output_dir,
                 args.n,
@@ -869,7 +869,7 @@ def main() -> None:
             process_level(
                 level,
                 bigrams_table,
-                singletons_table,
+                unigrams_table,
                 excluded_table,
                 output_dir,
                 args.n,
