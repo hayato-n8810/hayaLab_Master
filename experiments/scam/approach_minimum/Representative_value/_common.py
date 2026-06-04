@@ -187,14 +187,24 @@ def load_id_to_bigrams_cached(
         with cache_p.open("rb") as f:
             payload = pickle.load(f)  # noqa: S301 -- 自己生成のローカル cache
         if payload.get("version") == NGRAMS_CACHE_VERSION and payload.get("schema") == NGRAMS_CACHE_SCHEMA:
-            print(f"[BIGRAMS] cache hit: {cache_p}", flush=True)
-            data = payload["data"]
-            # 防御的コピー: depth キーが想定外でも欠落キーは空辞書を返したい。
-            return {d: data.get(d, {}) for d in DEPTHS}
-        print(
-            f"[BIGRAMS] cache version mismatch ({payload.get('version')!r}), falling back to JSON",
-            flush=True,
-        )
+            # producer (integrate.py) は v2 スキーマで bigram を ``bigrams``
+            # キーに格納する（``data`` ではない）。 unigram-only / excluded は
+            # 別キーだが、 medoid は bigram のみ参照し、 利用側が ``.get(id,
+            # frozenset())`` で空集合を補うため bigrams だけ返せば fallback と等価。
+            bigrams = payload.get("bigrams")
+            if isinstance(bigrams, dict):
+                print(f"[BIGRAMS] cache hit: {cache_p}", flush=True)
+                # 防御的コピー: depth キーが想定外でも欠落キーは空辞書を返したい。
+                return {d: bigrams.get(d, {}) for d in DEPTHS}
+            print(
+                "[BIGRAMS] cache missing 'bigrams' field, falling back to JSON",
+                flush=True,
+            )
+        else:
+            print(
+                f"[BIGRAMS] cache version mismatch ({payload.get('version')!r}), falling back to JSON",
+                flush=True,
+            )
 
     if not abs_p.exists():
         return None
