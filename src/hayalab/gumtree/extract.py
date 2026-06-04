@@ -153,6 +153,28 @@ def _collect_sibling_nodes(
     return [nodes_map[i] for i in sorted(nodes_map)]
 
 
+def _resolve_scope_idx(tree: list[ASTNode], action_index: int, scope_boundary: set[str]) -> int:
+    """差分ノードのスコープ境界 index を解決する（必ず非 None を返す）。
+
+    scope_boundary に該当する祖先が無い場合は最外祖先（root）、それも無ければ
+    差分ノード自身を境界とする。これにより BLOCK_EXCLUDE_PARENT / BLOCK_INCLUDE_PARENT
+    のスコープが常に確定し、下位粒度（Diff / BROTHER_DIFF）を包含できる。
+
+    Args:
+        tree: ASTノード列。
+        action_index: 差分ノードのインデックス。
+        scope_boundary: スコープ境界とみなすノード名の集合。
+
+    Returns:
+        スコープ境界ノードのインデックス。
+    """
+    scope_idx = find_scope_boundary_index(tree[action_index], tree, scope_boundary)
+    if scope_idx is not None:
+        return scope_idx
+    node = tree[action_index]
+    return node.parent[0] if node.parent else action_index
+
+
 # ──────────────────────────────────────────────────────────
 # スコープ切り出し（公開 API）
 # cut_scope_*(ast, actions)  ← コア（任意の AST と actions を受け取る）
@@ -234,6 +256,13 @@ def cut_scope_brother(ast: AST, actions: list[GumAction]) -> dict[str, Any]:
                         p = node_to_payload(idx, node)
                         nodes.append(p)
                         merged_map[idx] = p
+            else:
+                # 差分ノードがルート（直接親なし）のケース。Diff（自身＋子孫）と
+                # 同じ集合を収集し、Diff ⊆ BROTHER_DIFF の包含を保証する。
+                for idx, node in get_descendants(action_index, tree):
+                    p = node_to_payload(idx, node)
+                    nodes.append(p)
+                    merged_map[idx] = p
 
         per_action.append(
             {
@@ -289,12 +318,11 @@ def cut_scope_block_exclude_parent(
         nodes: list[NodePayload] = []
 
         if action_index is not None and 0 <= action_index < len(tree):
-            scope_idx = find_scope_boundary_index(tree[action_index], tree, scope_boundary)
-            if scope_idx is not None:
-                scope_name = tree[scope_idx].name
-                nodes = _collect_sibling_nodes(tree, action_index, scope_idx)
-                for p in nodes:
-                    merged_map[p["origin_index"]] = p
+            scope_idx = _resolve_scope_idx(tree, action_index, scope_boundary)
+            scope_name = tree[scope_idx].name
+            nodes = _collect_sibling_nodes(tree, action_index, scope_idx)
+            for p in nodes:
+                merged_map[p["origin_index"]] = p
 
         per_action.append(
             {
@@ -351,12 +379,11 @@ def cut_scope_block_include_parent(
         nodes: list[NodePayload] = []
 
         if action_index is not None and 0 <= action_index < len(tree):
-            scope_idx = find_scope_boundary_index(tree[action_index], tree, scope_boundary)
-            if scope_idx is not None:
-                scope_name = tree[scope_idx].name
-                nodes = [node_to_payload(idx, node) for idx, node in get_descendants(scope_idx, tree)]
-                for p in nodes:
-                    merged_map[p["origin_index"]] = p
+            scope_idx = _resolve_scope_idx(tree, action_index, scope_boundary)
+            scope_name = tree[scope_idx].name
+            nodes = [node_to_payload(idx, node) for idx, node in get_descendants(scope_idx, tree)]
+            for p in nodes:
+                merged_map[p["origin_index"]] = p
 
         per_action.append(
             {

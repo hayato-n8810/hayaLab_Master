@@ -83,9 +83,14 @@ def find_sibling_root_indices(
     if not action_node.parent:
         return []
     scope = action_node.parent.index(scope_idx)
-    if scope + 1 >= len(action_node.parent):
-        return []
-    parent_idx = action_node.parent[scope + 1]
+    if scope + 1 < len(action_node.parent):
+        parent_idx = action_node.parent[scope + 1]
+    else:
+        # 差分ノードがスコープ境界の直接の子のケース。scope_idx の一つ下の
+        # 階層が存在しないため、scope_idx 直下の同階層ノードを兄弟ルートとして扱う。
+        # これにより BLOCK_EXCLUDE_PARENT が BROTHER_DIFF（直接親 = scope_idx の
+        # 全子孫）を包含し、粒度間の単調性が保たれる。
+        parent_idx = scope_idx
     if not (0 <= parent_idx < len(tree)):
         return []
     return sorted(idx for idx, node in enumerate(tree) if node.parent and node.parent[-1] == parent_idx and scope_idx in node.parent)
