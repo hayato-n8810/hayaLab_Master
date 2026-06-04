@@ -518,7 +518,7 @@ def main() -> None:
     print(f"[RECORDS] {len(records)}", flush=True)
 
     workers = max(1, args.workers)
-    levels: tuple[int, ...] = (0, 1, 2, 3)
+    levels: tuple[int, ...] = (0, 1)
     print(f"[WORKERS] {workers} (mb_id 並列)", flush=True)
 
     if workers <= 1:

@@ -63,7 +63,6 @@ echo "  STEP 2/5: abstract.py"
 echo "================================================================"
 for level in ${LEVELS}; do
     python3 "${ABSTRACT}" \
-        --level ${level} \
         --workers ${WORKERS} \
         --server
 done
