@@ -86,7 +86,6 @@ def _iter_records(input_path: Path) -> Any:
     Yields:
         各レコードの dict。
     """
-
     with open(input_path, "rb") as f:
         items = ijson.items(f, "item")
         for record in items:
@@ -187,8 +186,9 @@ def process_record(
         return [], base_code, head_code
 
     # Stage A 後: base_covered フィルタ（--no-stage-b でも適用）
+    # base_nodes を渡すことで B2 の subtree 包含判定が正しく行われる
     base_actions = _parse_actions(diff.get("base_actions", []))
-    results = [pm for pm in results if is_base_covered(pm, base_actions)]
+    results = [pm for pm in results if is_base_covered(pm, base_actions, base_nodes=nodes)]
 
     if not results:
         return [], base_code, head_code
@@ -283,7 +283,7 @@ def write_outputs(
         print(f"  Pattern {pid}: {len(pid_matches)} matches, {len(linked_matches)} diff_linked")
 
 
-# 実行ぽいんちょ
+# 実行ポイント
 if __name__ == "__main__":
     # TODO: experimentsで収めているため実行は”uv run python -m experiments.scam.RQ1.run”
     # 調整次第，hayalabへ移住
@@ -291,7 +291,7 @@ if __name__ == "__main__":
     config = PathConfig()
     parser = argparse.ArgumentParser(description="Slow pattern detection on MBDiff.json")
     parser.add_argument("--input", default=f"{config.processed}/MBDiff.json", help="Input MBDiff.json path")
-    parser.add_argument("--output-dir", default=f"{config.outputs}/scam/RQ1", help="Output directory")
+    parser.add_argument("--output-dir", default=f"{config.outputs}/scam/PreAnalysis", help="Output directory")
     parser.add_argument("--patterns", default="1,2,3,4,5,6,7,8,9,10", help="Comma-separated pattern IDs")
     args = parser.parse_args()
 

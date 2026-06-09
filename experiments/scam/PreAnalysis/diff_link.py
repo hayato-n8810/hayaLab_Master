@@ -6,13 +6,22 @@ PatternMatch に対して base_actions / head_actions / head_nodes を参照し�
 判定ルール:
   base_covered（以下のいずれか）
     B1: base_actions の tree.index または ancestors.index が node_index に一致
-    B2: base_actions のいずれかの tree.index が起点ノードの [begin, end) に含まれる
+    B2: base_actions のいずれかの tree.index が起点ノードの **AST subtree** に含まれる
+        （= action.index の parent path 上に node_index が存在する）
 
   head_covered:
     head_actions の subtree（action.index を起点とする部分木）配下に、論文の after に対応する
-    head 側ノードが存在する。
+    head 側ノードが存在する。anchor として ancestors は最近接 1 段のみ使用し、`program` 等の
+    最上位を含めない（含めると変更と無関係な既存ノードが anchor 配下に入ってしまうため）。
 
 最終判定: diff_linked = base_covered AND head_covered
+
+修正履歴:
+  - B2 のバイト範囲比較バグを修正：action.index は **ノードインデックス** であり、
+    起点ノードの byte 範囲 [begin, end) と直接比較するのは型エラー。subtree 包含で再定義。
+  - head anchor の ancestors を最近接 1 段に制限：以前は ancestors を全て anchor に加えて
+    いたが、program など最上位を含めるため、既存（未変更）ノードまで anchor の subtree と
+    みなされ AFTER パターン候補が膨らんでいた。
 """
 
 from __future__ import annotations
@@ -178,8 +187,42 @@ def _binary_with_typeof_eq(head_nodes: list[ASTNode], bin_idx: int) -> bool:
     return has_typeof and has_string
 
 
-def _binary_plus_with_string_or_var(head_nodes: list[ASTNode], bin_idx: int) -> bool:
-    """binary_expression が "+" で、直 child のいずれかが string_literal または VAR_* identifier か判定する。
+def _is_empty_string_node(head_nodes: list[ASTNode], idx: int) -> bool:
+    """ノードが空文字列リテラル `""` / `''` かを判定する。
+
+    tree-sitter-javascript では文字列リテラルは `string` ノードで、内容があれば
+    `string_fragment` 子ノードを持つ。空文字列は string_fragment を持たない
+    （または string_fragment.value が空文字列）。
+
+    Args:
+        head_nodes: head 側 ASTNode リスト。
+        idx: チェック対象ノードのインデックス。
+
+    Returns:
+        空文字列リテラルなら True。
+    """
+    if head_nodes[idx].name != "string":
+        return False
+    parent_path = head_nodes[idx].parent + [idx]
+    for j in range(idx + 1, len(head_nodes)):
+        if head_nodes[j].parent != parent_path:
+            continue
+        if head_nodes[j].name == "string_fragment":
+            return head_nodes[j].value == ""
+        # 子要素を一通り見たら break（pre-order なので parent が深くなったら別の sibling）
+        if len(head_nodes[j].parent) < len(parent_path):
+            break
+    # string_fragment 子がなければ空文字列
+    return True
+
+
+def _binary_plus_with_empty_string(head_nodes: list[ASTNode], bin_idx: int) -> bool:
+    """binary_expression が `+` で、直 child の **少なくとも一方が空文字列** か判定する。
+
+    ID3 (String(x) → "" + x / x + "") の AFTER 判定用。target.md の例にあるように
+    片方のオペランドは empty string でなければならない。「任意の文字列 + 変数」を
+    許容すると関数本体が全リファクタされた場合の `Array(...).join(",") + VAR` 等が
+    全て該当してしまうため、空文字列に限定する。
 
     Args:
         head_nodes: head 側 ASTNode リスト。
@@ -194,10 +237,7 @@ def _binary_plus_with_string_or_var(head_nodes: list[ASTNode], bin_idx: int) -> 
     for j in range(bin_idx + 1, len(head_nodes)):
         if head_nodes[j].parent != parent_path:
             continue
-        node = head_nodes[j]
-        if node.name == "string_literal":
-            return True
-        if node.name == "identifier" and node.value.startswith("VAR_"):
+        if head_nodes[j].name == "string" and _is_empty_string_node(head_nodes, j):
             return True
     return False
 
@@ -298,8 +338,8 @@ def _head_matches_after_for_pattern(
         return False
 
     if pattern_id == 3:
-        # x + (string_literal | VAR_* identifier)
-        return _binary_plus_with_string_or_var(head_nodes, head_idx)
+        # `"" + x` または `x + ""` 形に限定（target.md ID3 の after 例どおり）
+        return _binary_plus_with_empty_string(head_nodes, head_idx)
 
     if pattern_id == 4:
         if not _has_member_property(head_nodes, head_idx, "empty"):
@@ -320,12 +360,14 @@ def _head_matches_after_for_pattern(
         return _has_member_property(head_nodes, head_idx, "replace")
 
     if pattern_id == 7:
-        # binary_expression: instanceof もしくは typeof X === "..." 形式
+        # target.md ID7 は instanceof への置換が主旨。typeof X === "..." 形式は
+        # ID7 とは別カテゴリの最適化（typeof 比較）であり、論文の意図と異なる。
+        # binary_expression: instanceof のみ許容
         if head_node.name == "binary_expression":
-            if _binary_has_operator(head_nodes, head_idx, "instanceof"):
-                return True
-            return _binary_with_typeof_eq(head_nodes, head_idx)
-        # call_expression: Array.isArray(...) などの組込み型判定
+            return _binary_has_operator(head_nodes, head_idx, "instanceof")
+        # call_expression: Array.isArray(...) は instanceof Array と意味的に同等の組込み判定。
+        # 既存の TRUE 事例（toString.call(arr) === "[object Array]" → Array.isArray(arr)）の
+        # 互換性のため許容を残す。
         if head_node.name == "call_expression":
             return _has_member_property(head_nodes, head_idx, "isArray")
         return False
@@ -372,27 +414,136 @@ def _resolve_action_node_index(action: GumAction) -> int | None:
     return None
 
 
-def _is_descendant_or_self(head_nodes: list[ASTNode], action_idx: int, h_idx: int) -> bool:
-    """h_idx が action_idx の subtree（自身を含む）に属するか判定する。
+def _is_descendant_or_self(nodes: list[ASTNode], anchor_idx: int, target_idx: int) -> bool:
+    """target_idx が anchor_idx の subtree（自身を含む）に属するか判定する。
 
-    parent パスは「ルートからの親インデックス列」。action_idx が h_idx の祖先か
-    自身であれば True。
+    parent パスは「ルートからの親インデックス列」。anchor_idx が target_idx の祖先か
+    自身であれば True。base / head どちらの ASTNode リストでも使える共通ヘルパー。
 
     Args:
-        head_nodes: head 側 ASTNode リスト。
-        action_idx: 起点ノードインデックス。
-        h_idx: 判定対象ノードインデックス。
+        nodes: ASTNode リスト。
+        anchor_idx: 起点ノードインデックス。
+        target_idx: 判定対象ノードインデックス。
 
     Returns:
-        h_idx が action_idx の subtree 内なら True。
+        target_idx が anchor_idx の subtree 内なら True。
     """
-    if action_idx == h_idx:
+    if anchor_idx == target_idx:
         return True
-    if action_idx < 0 or action_idx >= len(head_nodes):
+    if anchor_idx < 0 or anchor_idx >= len(nodes):
         return False
-    if h_idx < 0 or h_idx >= len(head_nodes):
+    if target_idx < 0 or target_idx >= len(nodes):
         return False
-    return action_idx in head_nodes[h_idx].parent
+    return anchor_idx in nodes[target_idx].parent
+
+
+# anchor として除外する最上位ノード深さ。
+# parent path の長さがこの値未満のノード（= program ルート）は anchor に含めない。
+# program を anchor にすると配下の全 head_nodes が「anchor の subtree」と判定され、
+# 変更と無関係な既存ノードまで AFTER 候補に入ってしまう。program-direct-child は
+# 局所性が十分なので anchor として許容する。
+_MIN_ANCHOR_DEPTH = 1
+
+
+def _is_useful_anchor(nodes: list[ASTNode], idx: int) -> bool:
+    """idx が anchor として使える程度に局所的か（program 等の最上位でないか）判定する。
+
+    Args:
+        nodes: ASTNode リスト。
+        idx: ノードインデックス。
+
+    Returns:
+        anchor として有効なら True（parent パス長 >= _MIN_ANCHOR_DEPTH）。
+    """
+    if idx < 0 or idx >= len(nodes):
+        return False
+    return len(nodes[idx].parent) >= _MIN_ANCHOR_DEPTH
+
+
+def _collect_action_anchors(actions: list[GumAction], nodes: list[ASTNode]) -> set[int]:
+    """head_actions から AFTER パターン検索の anchor 集合を構築する。
+
+    各 action.index と全 ancestors を候補とし、その中で **program / program 直下の文
+    レベルより深いもの** のみ採用する。これにより、
+
+      - GumTree が `.replace(.., ..)` 等を fine-grained に分割して insert した場合でも
+        call_expression / member_expression レベルの ancestor が anchor として残り、
+        AFTER パターン (call_expression) を正しく拾える（ID6 の TRUE 維持）。
+      - program や program 直下の文を anchor にしないことで、変更と無関係な既存ノード
+        （別の for ループ等）が「anchor の subtree」に紛れ込むのを防ぐ
+        （ID1 の 15415、ID9 の 911/1335 等の false 抑制）。
+
+    Args:
+        actions: GumAction のリスト（head_actions）。
+        nodes: ASTNode のリスト（head_nodes）。
+
+    Returns:
+        anchor として用いるノードインデックス集合。
+    """
+    anchors: set[int] = set()
+    for action in actions:
+        if action.index is not None and _is_useful_anchor(nodes, action.index):
+            anchors.add(action.index)
+        if action.ancestors:
+            for anc in action.ancestors:
+                if _is_useful_anchor(nodes, anc.index):
+                    anchors.add(anc.index)
+    return anchors
+
+
+def _insert_action_anchors(actions: list[GumAction], nodes: list[ASTNode]) -> set[int]:
+    """head_actions のうち `insert-*` 系の action に限定して anchor 集合を返す。
+
+    `_collect_action_anchors` の insert-only 版。ID9 のような「新規に挿入された
+    AFTER 構造」を要求するパターンで、既存（未変更）ノードを除外するために使う。
+
+    重要: ancestors は **使わない**。ancestors は挿入が行われた位置（既存のコンテキスト）
+    を指し、program など最上位を含むため、ancestors を anchor にすると既存の兄弟コード
+    （例: program 直下に元から存在する for ループ）まで「挿入された subtree 配下」と
+    みなされてしまう。挿入された **本体** のみを anchor とするため action.index のみを使う。
+
+    Args:
+        actions: GumAction のリスト（head_actions）。
+        nodes: ASTNode のリスト（head_nodes）。
+
+    Returns:
+        insert 系 action の anchor として用いるノードインデックス集合（action.index のみ）。
+    """
+    anchors: set[int] = set()
+    for action in actions:
+        if not action.action.startswith("insert"):
+            continue
+        if action.index is not None and 0 <= action.index < len(nodes):
+            anchors.add(action.index)
+    return anchors
+
+
+def _has_inserted_node_of_kind(actions: list[GumAction], nodes: list[ASTNode], kind: str) -> bool:
+    """`insert-*` action の subtree 配下に指定型名のノードが含まれるか。
+
+    例: kind="for_statement" は、新規に挿入された function_declaration の中に
+    for_statement が含まれるケース（id 994/1086 等）も拾える。単に action.tree が
+    "for_statement..." で始まる action を探すだけだと、挿入された関数の中の for を
+    取り逃すため subtree 走査が必要。
+
+    Args:
+        actions: head_actions。
+        nodes: head_nodes。
+        kind: 期待するノード型名。
+
+    Returns:
+        挿入された subtree 配下にそのノード型が存在すれば True。
+    """
+    insert_anchors = _insert_action_anchors(actions, nodes)
+    if not insert_anchors:
+        return False
+    for h_idx, node in enumerate(nodes):
+        if node.name != kind:
+            continue
+        for anchor in insert_anchors:
+            if _is_descendant_or_self(nodes, anchor, h_idx):
+                return True
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -400,25 +551,32 @@ def _is_descendant_or_self(head_nodes: list[ASTNode], action_idx: int, h_idx: in
 # ---------------------------------------------------------------------------
 
 
-def is_base_covered(pm: PatternMatch, base_actions: list[GumAction]) -> bool:
+def is_base_covered(
+    pm: PatternMatch,
+    base_actions: list[GumAction],
+    base_nodes: list[ASTNode] | None = None,
+) -> bool:
     """PatternMatch が base_actions の subtree に含まれるかを判定する。
 
     B1: base_actions のいずれかの action.index == node_index、または
         action.ancestors のいずれかが node_index に一致する。
-    B2: base_actions のいずれかの action.index が [begin, end) に含まれる。
+    B2: base_actions のいずれかの action.index が node_index の **AST subtree** に含まれる
+        （= action.index の parent path 上に node_index が現れる）。
 
-    いずれかを満たせば True。
+    旧 B2 はバイト位置とノードインデックスを比較するバグがあり、無関係な action が
+    たまたまノードインデックスがバイト範囲に収まることで base_covered=True になる
+    ケースが頻発していた。base_nodes を渡せば AST 包含で正しく判定する。
+    base_nodes が None の場合は B2 をスキップ（B1 のみで判定）。
 
     Args:
         pm: Stage A で生成された PatternMatch。
         base_actions: GumDiff.base_actions（GumAction のリスト）。
+        base_nodes: GumDiff.base_ast.tree（ASTNode のリスト）。B2 の subtree 判定に使用。
 
     Returns:
         base_covered が True なら True。
     """
     node_index = pm.node_index
-    begin = pm.begin
-    end = pm.end
 
     # B1
     for action in base_actions:
@@ -427,10 +585,13 @@ def is_base_covered(pm: PatternMatch, base_actions: list[GumAction]) -> bool:
         if action.ancestors and any(anc.index == node_index for anc in action.ancestors):
             return True
 
-    # B2
-    for action in base_actions:
-        if action.index is not None and begin <= action.index < end:
-            return True
+    # B2: action.index が node_index の subtree 内（= node_index が action.index の祖先）
+    if base_nodes is not None:
+        for action in base_actions:
+            if action.index is None:
+                continue
+            if _is_descendant_or_self(base_nodes, node_index, action.index):
+                return True
 
     return False
 
@@ -470,8 +631,6 @@ def apply_diff_link(
     del matches  # 方針 B では未使用（API 互換のため引数は残す）
 
     node_index = match.node_index
-    begin = match.begin
-    end = match.end
 
     # ---- base 側 ----
     b1_met = False
@@ -485,10 +644,14 @@ def apply_diff_link(
             b1_met = True
             break
 
-    for action in base_actions:
-        if action.index is not None and begin <= action.index < end:
-            b2_met = True
-            break
+    # B2: action.index が node_index の subtree に含まれる（AST 包含で判定）
+    if base_nodes is not None:
+        for action in base_actions:
+            if action.index is None:
+                continue
+            if _is_descendant_or_self(base_nodes, node_index, action.index):
+                b2_met = True
+                break
 
     base_covered = b1_met or b2_met
 
@@ -496,19 +659,17 @@ def apply_diff_link(
     head_covered = False
 
     if base_covered and head_actions and head_nodes:
-        # head_actions が指す起点ノードと、その祖先（action.ancestors）も anchor に加える。
-        # GumTree が新規構造の内側（子トークンや孫ノード）に対して fine-grained な
-        # insert/update を発行した場合、新規構造そのものは action.index ではなく
-        # ancestors 配下に現れるため、ancestors も anchor に含めることで
-        # subscript_expression や replace call などの「包む新規構造」を取り逃さない。
-        action_roots: set[int] = set()
-        for action in head_actions:
-            if action.index is not None and 0 <= action.index < len(head_nodes):
-                action_roots.add(action.index)
-            if action.ancestors:
-                for anc in action.ancestors:
-                    if 0 <= anc.index < len(head_nodes):
-                        action_roots.add(anc.index)
+        # head_actions の anchor を構築（action.index + 最近接 ancestors のみ）。
+        # ancestors を全段含めると program まで anchor となり、変更と無関係な既存
+        # ノードまで AFTER パターン候補に含まれてしまう。
+        action_roots = _collect_action_anchors(head_actions, head_nodes)
+
+        # ID9 (reduce → for): 「単に for_statement が head 内に存在する」だけでは
+        # 既存の for ループに引っかかるため、新規挿入の subtree 配下に for_statement が
+        # あることを要求する（挿入された function_declaration 内部の for も拾うため subtree 走査）。
+        if match.pattern_id == 9:
+            if not _has_inserted_node_of_kind(head_actions, head_nodes, "for_statement"):
+                return match  # head_covered=False のまま
 
         if action_roots:
             # 各 head ノードを走査し、いずれかの action subtree に属し、
