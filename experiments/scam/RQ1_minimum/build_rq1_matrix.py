@@ -49,16 +49,22 @@ from identify_matcher import match_patterns_on_cut
 
 # ---------------------------------------------------------------------------
 # パス設定
+#   INTEGRATE / OUT_DIR は環境変数で上書き可能（既定は推移的クラスタリング結果）。
+#   complete-linkage との比較時:
+#     RQ1_INTEGRATE=outputs/scam/approach_minimum/integrate_complete
+#     RQ1_OUT=outputs/scam/RQ1_minimum/complete
 # ---------------------------------------------------------------------------
 ROOT = Path(__file__).resolve().parents[3]
 PRE_MATCHES = ROOT / "outputs/scam/PreAnalysis/matches.jsonl"
-INTEGRATE = ROOT / "outputs/scam/approach_minimum/integrate"
+INTEGRATE = ROOT / "outputs/scam/approach_minimum/integrate_complete"
 CUTOUTS = ROOT / "outputs/scam/approach_minimum/cutouts.json"
-OUT_DIR = ROOT / "outputs/scam/RQ1_minimum/"
+OUT_DIR = ROOT / "outputs/scam/RQ1_minimum/complete_all_tau"
+OUT_DIR.mkdir(parents=True, exist_ok=True)
 # ---------------------------------------------------------------------------
 # 設定軸の定義
 # ---------------------------------------------------------------------------
-TAUS = [("jaccard07", "0.7"), ("jaccard09", "0.9")]
+# TAUS = [("jaccard07", "0.7"), ("jaccard09", "0.9")]
+TAUS = [("jaccard05", "0.5"), ("jaccard06", "0.6"), ("jaccard07", "0.7"), ("jaccard08", "0.8"), ("jaccard09", "0.9"), ("jaccard10", "1.0")]
 ALPHAS = [("level0", r"$\alpha_0$"), ("level1", r"$\alpha_1$")]
 SIGMAS = [
     ("Diff", r"$\sigma_1$"),

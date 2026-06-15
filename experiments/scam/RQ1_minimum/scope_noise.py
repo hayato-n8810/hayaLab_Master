@@ -25,7 +25,7 @@ import ijson
 
 ROOT = Path(__file__).resolve().parents[3]
 CUTOUTS = ROOT / "outputs/scam/approach_minimum/cutouts.json"
-OUT_DIR = ROOT / "outputs/scam/RQ1_minimum/"
+OUT_DIR = ROOT / "outputs/scam/RQ1_minimum/complete_all_tau"
 
 DEPTHS = ["Diff", "Brother", "ExParent", "Parent"]
 SIGMA_LABEL = {"Diff": "sigma1", "Brother": "sigma2", "ExParent": "sigma3", "Parent": "sigma4"}

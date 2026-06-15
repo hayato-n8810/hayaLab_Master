@@ -154,7 +154,7 @@ def main() -> None:
 
     base = config.outputs / "scam" / "approach_minimum"
     abstract_dir = base / "abstract"
-    integrate_dir = base / "integrate" / args.tau_dir
+    integrate_dir = base / "integrate_complete" / args.tau_dir
 
     for level in args.levels:
         abstract_path = abstract_dir / f"abstract_level{level}.json"

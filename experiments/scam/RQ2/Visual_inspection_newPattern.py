@@ -1,7 +1,7 @@
 """新パターン候補クラスタの目視調査用 CSV を生成する。
 
 概要:
-    outputs/scam/approach_minimum/integrate/jaccard07/level{0,1}/{Diff,Brother}
+    outputs/scam/approach_minimum/integrate_complete/jaccard07/level{0,1}/{Diff,Brother}
     の 4 ディレクトリのクラスタから、既知 7 パターン (PreAnalysis/matches.jsonl の mb_id) を
     含まないクラスタを抽出し、size 降順上位 TOP_K 件を新規パターン候補とする。
 
@@ -64,7 +64,7 @@ def extract_added_removed(base_code: str, head_code: str) -> tuple[str, str]:
 
 CONFIG = PathConfig()
 
-INTEGRATE_ROOT = CONFIG.outputs / "scam/approach_minimum/integrate/jaccard07"
+INTEGRATE_ROOT = CONFIG.outputs / "scam/approach_minimum/integrate_complete/jaccard07"
 MBDIFF_JSON = CONFIG.processed / "MBDiff.json"
 OUTPUT_ROOT = CONFIG.outputs / "scam/RQ2/visual_inspection"
 
@@ -75,7 +75,7 @@ LEVEL_DEPTHS: list[tuple[str, str]] = [
     ("level1", "Brother"),
 ]
 
-TOP_K = 10
+TOP_K = 30
 SAMPLE_N = 5
 
 
