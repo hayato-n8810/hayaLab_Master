@@ -1,9 +1,9 @@
 """integrate クラスタの各メンバーに value 列を付与してクラスごとに列挙する。
 
 入力:
-    クラスタ結果: outputs/scam/approach_minimum/integrate/{tau_dir}/level{L}/{depth}/{depth}.json
+    クラスタ結果: outputs/scam/approach/integrate/{tau_dir}/level{L}/{depth}/{depth}.json
         ``{"meta": {...}, "classes": {class_id: ["{id}_{depth}", ...]}}``
-    抽象化:      outputs/scam/approach_minimum/abstract/abstract_level{L}.json
+    抽象化:      outputs/scam/approach/abstract/abstract_level{L}.json
         ``[{"id": int, "cutouts": {depth: {"nodes": [...]}}}]``
 
 処理:
@@ -12,12 +12,12 @@
     列挙する。
 
 出力:
-    outputs/scam/approach_minimum/integrate/{tau_dir}/level{L}/{depth}/{depth}_label.json
+    outputs/scam/approach/integrate/{tau_dir}/level{L}/{depth}/{depth}_label.json
         ``{class_id: [{"id": int, "value": str}, ...]}``
 
 実行例:
-    uv run python experiments/scam/approach_minimum/show_label.py
-    uv run python experiments/scam/approach_minimum/show_label.py --tau-dir jaccard07 --levels 0 1
+    uv run python experiments/scam/approach/show_label.py
+    uv run python experiments/scam/approach/show_label.py --tau-dir jaccard07 --levels 0 1
 """
 
 from __future__ import annotations
@@ -152,9 +152,9 @@ def main() -> None:
     args = parse_args()
     config = PathConfig()
 
-    base = config.outputs / "scam" / "approach_minimum"
+    base = config.outputs / "scam" / "approach"
     abstract_dir = base / "abstract"
-    integrate_dir = base / "integrate_complete" / args.tau_dir
+    integrate_dir = base / "integrate" / args.tau_dir
 
     for level in args.levels:
         abstract_path = abstract_dir / f"abstract_level{level}.json"

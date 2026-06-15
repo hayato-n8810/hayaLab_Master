@@ -22,7 +22,7 @@ label JSON の value 文字列 (``$v0`` 等のスロット記号を含む空白�
 多数を占める）では十分機能する。
 
 入力:
-    label: ``outputs/scam/approach_minimum/integrate/{tau_dir}/level{L}/{depth}/{depth}_label.json``
+    label: ``outputs/scam/approach/integrate/{tau_dir}/level{L}/{depth}/{depth}_label.json``
         ``{class_id: [{"id": int, "value": str}, ...]}``
 
 出力:
@@ -45,7 +45,7 @@ label JSON の value 文字列 (``$v0`` 等のスロット記号を含む空白�
     }
 
 実行例:
-    uv run python experiments/scam/approach_minimum/Representative_value/skeleton.py \\
+    uv run python experiments/scam/approach/Representative_value/skeleton.py \\
         --tau-dir jaccard07 --k 0.66 --levels 0
 """
 

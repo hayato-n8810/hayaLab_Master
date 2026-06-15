@@ -11,7 +11,7 @@ r"""スコープ拡大に伴う「非本質ノードの混入」を定量化す�
 ``origin_index`` 集合である。句読点ノードを除いた named ノードのみで集計した値も併せて
 報告する（代表値のトークンは句読点を含まないため）。
 
-入力: outputs/scam/approach_minimum/cutouts.json（1 パス走査）
+入力: outputs/scam/approach/cutouts.json（1 パス走査）
 出力: scope_noise.csv（σ 別の集計），標準出力に要約表
 """
 
@@ -24,8 +24,8 @@ from pathlib import Path
 import ijson
 
 ROOT = Path(__file__).resolve().parents[3]
-CUTOUTS = ROOT / "outputs/scam/approach_minimum/cutouts.json"
-OUT_DIR = ROOT / "outputs/scam/RQ1_minimum/complete_all_tau"
+CUTOUTS = ROOT / "outputs/scam/approach/cutouts.json"
+OUT_DIR = ROOT / "outputs/scam/RQ1/complete_all_tau"
 
 DEPTHS = ["Diff", "Brother", "ExParent", "Parent"]
 SIGMA_LABEL = {"Diff": "sigma1", "Brother": "sigma2", "ExParent": "sigma3", "Parent": "sigma4"}

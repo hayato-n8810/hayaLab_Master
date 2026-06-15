@@ -12,9 +12,9 @@ bigram の定義は `integrate.py` と完全に同一（クラスタ生成と整
 
 | パス | 役割 |
 |---|---|
-| `outputs/scam/approach_minimum/integrate/{tau_dir}/level{L}/{depth}.json` | クラスタ結果 (`classes: {class_id: [cutout_id, ...]}`) |
-| `outputs/scam/approach_minimum/integrate/{tau_dir}/level{L}/{depth}_label.json` | 各メンバーの value 文字列 (`{class_id: [{id, value}, ...]}`) |
-| `outputs/scam/approach_minimum/abstract/abstract_level{L}.json` | bigram 計算用の raw nodes |
+| `outputs/scam/approach/integrate/{tau_dir}/level{L}/{depth}.json` | クラスタ結果 (`classes: {class_id: [cutout_id, ...]}`) |
+| `outputs/scam/approach/integrate/{tau_dir}/level{L}/{depth}_label.json` | 各メンバーの value 文字列 (`{class_id: [{id, value}, ...]}`) |
+| `outputs/scam/approach/abstract/abstract_level{L}.json` | bigram 計算用の raw nodes |
 
 `tau_dir` は `jaccard05` / `jaccard07` / `jaccard09` のいずれか。
 `{depth}` は `Diff` / `Brother` / `ExParent` / `Parent`。
@@ -24,13 +24,10 @@ bigram の定義は `integrate.py` と完全に同一（クラスタ生成と整
 各戦略は同じ `level{L}/` 配下に戦略別 JSON を書き出す:
 
 ```
-outputs/scam/approach_minimum/integrate/{tau_dir}/level{L}/
+outputs/scam/approach/integrate/{tau_dir}/level{L}/
 ├── {depth}.json                           # integrate.py 出力（既存）
 ├── {depth}_label.json                     # show_label.py 出力（既存）
-├── {depth}_pattern_mode_medoid.json       # 戦略 1
-├── {depth}_pattern_common_bigrams.json    # 戦略 2
-├── {depth}_pattern_skeleton.json          # 戦略 3
-└── {depth}_pattern_medoid_outlier.json    # 戦略 4
+└── {depth}_pattern_mode_medoid.json       # 戦略 1
 ```
 
 ## 戦略一覧
@@ -53,88 +50,15 @@ outputs/scam/approach_minimum/integrate/{tau_dir}/level{L}/
 }
 ```
 
-### `common_bigrams.py` — クラス内 bigram の intersection
-
-クラスの全メンバーが共有する bigram 集合 `∩_i bigrams(member_i)` を抽出する。
-クラスタ生成に使った n-gram + Jaccard の**根拠そのもの**を残す方針。
-参考として medoid メンバーの id も併記する。
-
-出力スキーマ:
-```json
-{
-  "L0_M2_xxx": {
-    "size": 3,
-    "common_count": 7,
-    "common_bigrams": [[["name","val"],["name","val"]], ...],
-    "medoid_id": 9683
-  }
-}
-```
-
-注意: 推移併合の影響が大きい巨大クラスタでは intersection が極端に小さくなる
-（外れメンバーが 1 つでも該当 bigram を持たないと落ちる）。
-
-### `skeleton.py` — ≥k% トークン残存スケルトン
-
-label value の空白区切りトークン列を簡易整列し、各位置で `k_threshold` 以上の
-メンバーが同じトークンを持つ位置だけ残し、可変位置を `*` で表現する。
-
-基準列は「token 数が中央値に最も近いメンバー」（タイは id 昇順）。
-連続する `*` は 1 つに圧縮。
-
-出力スキーマ:
-```json
-{
-  "meta": {..., "k_threshold": 0.66},
-  "classes": {
-    "L0_M2_xxx": {
-      "size": 3,
-      "base_id": 3119,
-      "skeleton": "filter function $v0 * indexOf $v0 ===",
-      "support_per_token": [3, 3, 3, 2, 3, 3, 3]
-    }
-  }
-}
-```
-
-注意: 位置ベースの近似 MSA なので、長さや並びが大きく揺らぐクラスタでは
-スケルトンが `*` 中心に潰れる。
-
-### `medoid_outlier.py` — medoid 代表 + 外れ値分離
-
-medoid を代表に採用しつつ、medoid からの Jaccard が `--outlier-tau` 未満の
-メンバーを「外れメンバー」として別ラベルに切り出す。推移併合で混入した
-周縁メンバーの可視化に有効。
-
-出力スキーマ:
-```json
-{
-  "meta": {..., "outlier_tau": 0.5},
-  "classes": {
-    "L0_M2_xxx": {
-      "size": 8,
-      "representative": {"id": 222, "value": "...", "avg_jaccard": 0.56},
-      "core_ids": [222, 232, 239, ...],
-      "outliers": [
-        {"id": 22211, "value": "...", "jaccard_to_medoid": 0.21}
-      ]
-    }
-  }
-}
-```
-
-## CLI 共通オプション
+## CLI オプション
 
 | オプション | 既定 | 説明 |
 |---|---|---|
 | `--tau-dir` | `jaccard07` | 入出力に使う `jaccard{NN}` ディレクトリ名 |
-| `--levels` | `0 1 2 3` | 抽象化レベル（複数指定可） |
+| `--levels` | `0 1` | 抽象化レベル（複数指定可） |
 | `--depths` | 全 4 種 | `Diff Brother ExParent Parent` のサブセット |
 | `--workers` | `os.cpu_count()` | クラスごとに並列化するワーカー数。`1` で逐次実行 |
 
-戦略固有:
-- `skeleton.py --k 0.66` — トークン採用閾値
-- `medoid_outlier.py --outlier-tau 0.5` — 外れメンバー判定の Jaccard 閾値
 
 ## 並列化
 
@@ -154,7 +78,7 @@ byte-identical（同点解消はすべて明示済み、frozenset → list 変�
 `integrate.py` がクラスタリング処理の副産物として pickle で書き出す:
 
 ```
-outputs/scam/approach_minimum/abstract/bigrams_level{L}_n{N}.pkl
+outputs/scam/approach/abstract/bigrams_level{L}_n{N}.pkl
 ```
 
 各戦略は `_common.load_id_to_bigrams_cached(config, level)` 経由でこの cache
@@ -163,24 +87,36 @@ outputs/scam/approach_minimum/abstract/bigrams_level{L}_n{N}.pkl
 cache が `abstract_level{L}.json` より古い場合は自動的に abstract から
 計算する fallback 経路に入る（[BIGRAMS] cache miss → fallback (json)）。
 fallback は in-memory のみで pickle は書かない — cache の producer は
-`integrate.py` に一本化している。 abstract を再生成した後は次回 integrate
-実行時に cache も更新される。
+`integrate.py` に一本化している。
+
+cache pickle の生成・更新は `integrate.py --create-cache` を**明示指定**した
+ときだけ起こる:
+
+| 状況 | コマンド |
+|---|---|
+| 初回・abstract 更新時 | `python3 .../integrate.py --server --create-cache ...` |
+| クラスタリング設定だけ変えて再実行（cache はそのまま使う） | `python3 .../integrate.py --server ...`（フラグ無し） |
+
+`--create-cache` 未指定の integrate 実行では cache を読むだけで書き換えない
+（高速 + ディスク変更なし）。 cache が無い・古い・破損なら in-memory で
+rebuild してクラスタリングは継続するが、 pickle は更新されない。
 
 cache のスキーマバージョン（`integrate.py:NGRAMS_CACHE_VERSION` と
 `_common.py:NGRAMS_CACHE_VERSION`）を bump すると古い pickle は無視され、
-自動的に fallback 経路に倒れる。
+fallback 経路に倒れる（n-gram ロジックを変更したら版数を上げ、
+`--create-cache` 付きで integrate を 1 度走らせる）。
 
 ## 実行例
 
 個別実行:
 ```bash
-uv run python experiments/scam/approach_minimum/Representative_value/mode_medoid.py \
+uv run python experiments/scam/approach/Representative_value/mode_medoid.py \
     --tau-dir jaccard07 --levels 0 --depths Diff
 ```
 
 全戦略 × 全 tau × 全 level × 全 depth を一括実行:
 ```bash
-bash experiments/scam/approach_minimum/Representative_value/run.sh
+bash experiments/scam/approach/Representative_value/run.sh
 ```
 
 `run.sh` の主な環境変数:
@@ -188,16 +124,14 @@ bash experiments/scam/approach_minimum/Representative_value/run.sh
 | 環境変数 | 既定 | 説明 |
 |---|---|---|
 | `TAU_DIRS` | `jaccard05 jaccard07 jaccard09` | 処理する tau ディレクトリ群 |
-| `LEVELS` | `0 1 2 3` | 抽象化レベル |
+| `LEVELS` | `1 2` | 抽象化レベル |
 | `DEPTHS` | `Diff Brother ExParent Parent` | depth 群 |
-| `SKELETON_K` | `0.66` | `skeleton.py --k` |
-| `OUTLIER_TAU` | `0.5` | `medoid_outlier.py --outlier-tau` |
 | `WORKERS` | （未指定→`os.cpu_count()`）| 全戦略の `--workers` を一括指定 |
 
-例: 8 並列で jaccard07 level0 Diff のみ:
+例: 8 並列で jaccard07 level1 Diff のみ:
 ```bash
-WORKERS=8 TAU_DIRS="jaccard07" LEVELS="0" DEPTHS="Diff" \
-  bash experiments/scam/approach_minimum/Representative_value/run.sh
+WORKERS=8 TAU_DIRS="jaccard07" LEVELS="1" DEPTHS="Diff" \
+  bash experiments/scam/approach/Representative_value/run.sh
 ```
 
 ## 依存

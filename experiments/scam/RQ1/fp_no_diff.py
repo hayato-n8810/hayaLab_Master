@@ -99,10 +99,10 @@ def main() -> None:
         w.writerows(rows)
     print("wrote", out)
 
-    print("\n=== FP 中の no_diff_linked 比率 (τ=0.7, α0) ===")
+    print("\n=== FP 中の no_diff_linked 比率 (τ=0.7, α1) ===")
     print("sigma     P  | |Gp| | |C| |  tp |  FP | FP∩noDiff | ratio")
     for r in rows:
-        if r["tau"] == "jaccard07" and r["alpha"] == "level0":
+        if r["tau"] == "jaccard07" and r["alpha"] == "level1":
             print(f"{r['sigma']:9} {r['pattern_id']:>2} | {r['Gp_size']:>3} | {r['C_size']:>4} | {r['tp']:>3} | {r['fp']:>4} | {r['fp_no_diff']:>8} | {r['fp_no_diff_ratio']}")
 
 

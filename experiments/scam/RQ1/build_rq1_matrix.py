@@ -23,8 +23,8 @@ Precision は補助指標（G_p が下限のため純度として解釈しない
 
 入力:
   - outputs/scam/PreAnalysis/matches.jsonl                 G_p (diff_linked=True)
-  - outputs/scam/approach_minimum/cutouts.json             各 pair の depth 別 cut（matcher 同定用）
-  - outputs/scam/approach_minimum/integrate/
+  - outputs/scam/approach/cutouts.json             各 pair の depth 別 cut（matcher 同定用）
+  - outputs/scam/approach/integrate/
         jaccard{07,09}/level{0,1}/{Diff,Brother,Parent,ExParent}/
           {depth}.json                       classes: class_id -> [ "{id}_{depth}" ]
           {depth}_pattern_mode_medoid.json    classes: class_id -> {representative:{id,value}}
@@ -51,21 +51,21 @@ from identify_matcher import match_patterns_on_cut
 # パス設定
 #   INTEGRATE / OUT_DIR は環境変数で上書き可能（既定は推移的クラスタリング結果）。
 #   complete-linkage との比較時:
-#     RQ1_INTEGRATE=outputs/scam/approach_minimum/integrate_complete
-#     RQ1_OUT=outputs/scam/RQ1_minimum/complete
+#     RQ1_INTEGRATE=outputs/scam/approach/integrate
+#     RQ1_OUT=outputs/scam/RQ1/complete
 # ---------------------------------------------------------------------------
 ROOT = Path(__file__).resolve().parents[3]
 PRE_MATCHES = ROOT / "outputs/scam/PreAnalysis/matches.jsonl"
-INTEGRATE = ROOT / "outputs/scam/approach_minimum/integrate_complete"
-CUTOUTS = ROOT / "outputs/scam/approach_minimum/cutouts.json"
-OUT_DIR = ROOT / "outputs/scam/RQ1_minimum/complete_all_tau"
+INTEGRATE = ROOT / "outputs/scam/approach/integrate"
+CUTOUTS = ROOT / "outputs/scam/approach/cutouts.json"
+OUT_DIR = ROOT / "outputs/scam/RQ1/all_tau"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 # ---------------------------------------------------------------------------
 # 設定軸の定義
 # ---------------------------------------------------------------------------
 # TAUS = [("jaccard07", "0.7"), ("jaccard09", "0.9")]
 TAUS = [("jaccard05", "0.5"), ("jaccard06", "0.6"), ("jaccard07", "0.7"), ("jaccard08", "0.8"), ("jaccard09", "0.9"), ("jaccard10", "1.0")]
-ALPHAS = [("level0", r"$\alpha_0$"), ("level1", r"$\alpha_1$")]
+ALPHAS = [("level1", r"$\alpha_1$"), ("level2", r"$\alpha_2$")]
 SIGMAS = [
     ("Diff", r"$\sigma_1$"),
     ("Brother", r"$\sigma_2$"),

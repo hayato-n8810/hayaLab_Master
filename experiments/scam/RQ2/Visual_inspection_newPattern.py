@@ -1,7 +1,7 @@
 """新パターン候補クラスタの目視調査用 CSV を生成する。
 
 概要:
-    outputs/scam/approach_minimum/integrate_complete/jaccard07/level{0,1}/{Diff,Brother}
+    outputs/scam/approach/integrate/jaccard07/level{0,1}/{Diff,Brother}
     の 4 ディレクトリのクラスタから、既知 7 パターン (PreAnalysis/matches.jsonl の mb_id) を
     含まないクラスタを抽出し、size 降順上位 TOP_K 件を新規パターン候補とする。
 
@@ -10,10 +10,10 @@
 
     出力先:
         outputs/scam/RQ2/jaccard07/
-        ├── level0/Diff/{summary.csv, README.md, rank01_*.csv ... rank10_*.csv}
-        ├── level0/Brother/...
-        ├── level1/Diff/...
-        └── level1/Brother/...
+        ├── level1/Diff/{summary.csv, README.md, rank01_*.csv ... rank10_*.csv}
+        ├── level1/Brother/...
+        ├── level2/Diff/...
+        └── level2/Brother/...
 
 実行:
     uv run python experiments/scam/RQ2/Visual_inspection_newPattern.py
@@ -64,15 +64,15 @@ def extract_added_removed(base_code: str, head_code: str) -> tuple[str, str]:
 
 CONFIG = PathConfig()
 
-INTEGRATE_ROOT = CONFIG.outputs / "scam/approach_minimum/integrate_complete/jaccard07"
+INTEGRATE_ROOT = CONFIG.outputs / "scam/approach/integrate/jaccard07"
 MBDIFF_JSON = CONFIG.processed / "MBDiff.json"
-OUTPUT_ROOT = CONFIG.outputs / "scam/RQ2/visual_inspection"
+OUTPUT_ROOT = CONFIG.outputs / "scam/RQ2/"
 
 LEVEL_DEPTHS: list[tuple[str, str]] = [
-    ("level0", "Diff"),
-    ("level0", "Brother"),
     ("level1", "Diff"),
     ("level1", "Brother"),
+    ("level2", "Diff"),
+    ("level2", "Brother"),
 ]
 
 TOP_K = 30
@@ -560,7 +560,7 @@ def process_one_direction(
     """1 つの (level, depth) ディレクトリの top クラスタを抽出する。
 
     Args:
-        level: "level0" or "level1"。
+        level: "level1" or "level2"。
         depth: "Diff" or "Brother"。
         known_mb_ids: 既知パターン mb_id 集合。
 

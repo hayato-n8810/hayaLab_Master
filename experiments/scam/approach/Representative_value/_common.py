@@ -9,11 +9,11 @@ integrate.py のクラスタ結果と show_label.py の label を入力に、各
   決定する（ライブラリは I/O パスを決定しない原則）。
 
 データ前提:
-    入力 cluster: ``outputs/scam/approach_minimum/integrate/{tau_dir}/level{L}/{depth}/{depth}.json``
+    入力 cluster: ``outputs/scam/approach/integrate/{tau_dir}/level{L}/{depth}/{depth}.json``
         ``{"meta": {...}, "classes": {class_id: ["{id}_{depth}", ...]}}``
-    入力 label:   ``outputs/scam/approach_minimum/integrate/{tau_dir}/level{L}/{depth}/{depth}_label.json``
+    入力 label:   ``outputs/scam/approach/integrate/{tau_dir}/level{L}/{depth}/{depth}_label.json``
         ``{class_id: [{"id": int, "value": str}, ...]}``
-    入力 abstract: ``outputs/scam/approach_minimum/abstract/abstract_level{L}.json``
+    入力 abstract: ``outputs/scam/approach/abstract/abstract_level{L}.json``
         ``[{"id": int, "cutouts": {depth: {"nodes": [...]}}}]``
 
 cutout_id は ``"{mb_id}_{depth}"`` 形式（integrate.py と同様）。
@@ -125,13 +125,13 @@ def load_id_to_tokens(
 
 
 def integrate_dir(config: PathConfig, tau_dir: str) -> Path:
-    """``outputs/scam/approach_minimum/integrate/{tau_dir}`` を返す."""
-    return config.outputs / "scam" / "approach_minimum" / "integrate" / tau_dir
+    """``outputs/scam/approach/integrate/{tau_dir}`` を返す."""
+    return config.outputs / "scam" / "approach" / "integrate" / tau_dir
 
 
 def abstract_path(config: PathConfig, level: int) -> Path:
     """``abstract_level{L}.json`` のパスを返す."""
-    return config.outputs / "scam" / "approach_minimum" / "abstract" / f"abstract_level{level}.json"
+    return config.outputs / "scam" / "approach" / "abstract" / f"abstract_level{level}.json"
 
 
 def bigrams_cache_path(config: PathConfig, level: int, n_value: int = 2) -> Path:

@@ -10,9 +10,9 @@ r"""戦略 1: mode + medoid 二段構えで各クラスの代表 value を選ぶ
 bigram の定義は ``integrate.py`` と完全に同一（``_common.bigrams_from_nodes``）。
 
 入力:
-    cluster:  ``outputs/scam/approach_minimum/integrate/{tau_dir}/level{L}/{depth}/{depth}.json``
+    cluster:  ``outputs/scam/approach/integrate/{tau_dir}/level{L}/{depth}/{depth}.json``
     label:    ``..._label.json``
-    abstract: ``outputs/scam/approach_minimum/abstract/abstract_level{L}.json``
+    abstract: ``outputs/scam/approach/abstract/abstract_level{L}.json``
 
 出力:
     ``{tau_dir}/level{L}/{depth}/{depth}_pattern_mode_medoid.json``
@@ -33,7 +33,7 @@ bigram の定義は ``integrate.py`` と完全に同一（``_common.bigrams_from
     }
 
 実行例:
-    uv run python experiments/scam/approach_minimum/Representative_value/mode_medoid.py \\
+    uv run python experiments/scam/approach/Representative_value/mode_medoid.py \\
         --tau-dir jaccard07 --levels 0
 """
 
@@ -195,7 +195,7 @@ def parse_args() -> argparse.Namespace:
     """CLI 引数."""
     p = argparse.ArgumentParser(description="戦略 mode_medoid: 各クラスの代表 value を mode + medoid で選ぶ")
     p.add_argument("--tau-dir", type=str, default="jaccard07")
-    p.add_argument("--levels", type=int, nargs="+", default=[0, 1, 2, 3])
+    p.add_argument("--levels", type=int, nargs="+", default=[1, 2])
     p.add_argument("--depths", type=str, nargs="+", default=list(DEPTHS))
     p.add_argument(
         "--workers",

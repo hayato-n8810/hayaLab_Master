@@ -116,7 +116,7 @@ def main() -> None:
     args = parse_args()
     pc = PathConfig()
     input_path = determine_input(args, pc)
-    output_dir = args.output_dir or (pc.outputs / "scam" / "approach_minimum")
+    output_dir = args.output_dir or (pc.outputs / "scam" / "approach")
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / "cutouts.json"
 

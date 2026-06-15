@@ -179,11 +179,11 @@ cut が構造を含まないことを確認した。すなわち matcher 同定�
 
 ```bash
 # matcher 同定（既定）: cutouts.json を1パス走査して同定キャッシュを構築（yajl2_c で ~15s + 集計）
-uv run python experiments/scam/RQ1_minimum/build_rq1_matrix.py --method matcher
+uv run python experiments/scam/RQ1/build_rq1_matrix.py --method matcher
 # 比較用の字句署名同定
-uv run python experiments/scam/RQ1_minimum/build_rq1_matrix.py --method lexical
+uv run python experiments/scam/RQ1/build_rq1_matrix.py --method lexical
 # スコープ別の非差分ノード比率（scope_noise.csv を出力）
-uv run python experiments/scam/RQ1_minimum/scope_noise.py
+uv run python experiments/scam/RQ1/scope_noise.py
 ```
 
 出力: `rq1_matrix.csv`（R∪/R_max/Precision/同定クラスタ数/最大クラスタサイズ）、`rq1_matrix.tex`

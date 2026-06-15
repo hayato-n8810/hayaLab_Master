@@ -25,9 +25,9 @@ bigram cache は順序を捨てて frozenset 化しているため位置別計�
 ログを出す）。 そのため起動は他戦略より遅い点に注意。
 
 入力:
-    cluster:  ``outputs/scam/approach_minimum/integrate/{tau_dir}/level{L}/{depth}/{depth}.json``
+    cluster:  ``outputs/scam/approach/integrate/{tau_dir}/level{L}/{depth}/{depth}.json``
     label:    ``..._label.json``（クラスメンバー id の取得に利用）
-    abstract: ``outputs/scam/approach_minimum/abstract/abstract_level{L}.json``
+    abstract: ``outputs/scam/approach/abstract/abstract_level{L}.json``
 
 出力:
     ``{tau_dir}/level{L}/{depth}/{depth}_pattern_skeleton_node.json``
@@ -50,7 +50,7 @@ bigram cache は順序を捨てて frozenset 化しているため位置別計�
     }
 
 実行例:
-    uv run python experiments/scam/approach_minimum/Representative_value/skeleton_node.py \
+    uv run python experiments/scam/approach/Representative_value/skeleton_node.py \
         --tau-dir jaccard07 --k 0.66 --levels 0
 """
 
