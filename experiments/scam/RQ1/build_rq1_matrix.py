@@ -38,9 +38,9 @@ Precision は補助指標（G_p が下限のため純度として解釈しない
 
 from __future__ import annotations
 
-import argparse
 import csv
 import json
+import os
 from collections import defaultdict
 from pathlib import Path
 
@@ -49,22 +49,24 @@ from identify_matcher import match_patterns_on_cut
 
 # ---------------------------------------------------------------------------
 # パス設定
-#   INTEGRATE / OUT_DIR は環境変数で上書き可能（既定は推移的クラスタリング結果）。
-#   complete-linkage との比較時:
-#     RQ1_INTEGRATE=outputs/scam/approach/integrate
-#     RQ1_OUT=outputs/scam/RQ1/complete
+#   INTEGRATE / OUT_DIR は環境変数で上書き可能。
+#     RQ1_INTEGRATE=outputs/scam/approach/integrate （integrate 出力ディレクトリ）
+#     RQ1_OUT=outputs/scam/RQ1                       （出力先）
 # ---------------------------------------------------------------------------
 ROOT = Path(__file__).resolve().parents[3]
 PRE_MATCHES = ROOT / "outputs/scam/PreAnalysis/matches.jsonl"
-INTEGRATE = ROOT / "outputs/scam/approach/integrate"
+INTEGRATE = Path(os.environ.get("RQ1_INTEGRATE", str(ROOT / "outputs/scam/approach/integrate")))
 CUTOUTS = ROOT / "outputs/scam/approach/cutouts.json"
-OUT_DIR = ROOT / "outputs/scam/RQ1/all_tau"
+OUT_DIR = Path(os.environ.get("RQ1_OUT", str(ROOT / "outputs/scam/RQ1")))
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 # ---------------------------------------------------------------------------
 # 設定軸の定義
+#   論文 Table II は τ ∈ {0.7, 0.9} の 16 行 (2τ × 2α × 4σ)。
+#   探索的に拡張する場合は RQ1_TAUS 環境変数を空白区切りで指定する。
+#       例: RQ1_TAUS="0.5 0.7 0.9" uv run python ...
 # ---------------------------------------------------------------------------
-# TAUS = [("jaccard07", "0.7"), ("jaccard09", "0.9")]
-TAUS = [("jaccard05", "0.5"), ("jaccard06", "0.6"), ("jaccard07", "0.7"), ("jaccard08", "0.8"), ("jaccard09", "0.9"), ("jaccard10", "1.0")]
+_TAU_ENV = os.environ.get("RQ1_TAUS", "0.7 0.9")
+TAUS: list[tuple[str, str]] = [(f"jaccard{round(float(t) * 10):02d}", t) for t in _TAU_ENV.split()]
 ALPHAS = [("level1", r"$\alpha_1$"), ("level2", r"$\alpha_2$")]
 SIGMAS = [
     ("Diff", r"$\sigma_1$"),
@@ -261,13 +263,13 @@ def fmt_cell_dual(row: dict) -> str:
     return f"{row['recall_noniso']:.2f}/{row['recall_best']:.2f}"
 
 
-def build_latex(rows: list[dict], gp_sizes: dict[int, int], method: str) -> str:
+def build_latex(rows: list[dict], gp_sizes: dict[int, int]) -> str:
     """16設定×7パターンの Recall マトリクス（Table II）の LaTeX 文字列を生成する。"""
     by_setting: dict[tuple, dict[int, dict]] = defaultdict(dict)
     for r in rows:
         by_setting[(r["tau"], r["alpha"], r["sigma"])][r["pattern_id"]] = r
 
-    ident = "事前分析と同一の matcher を代表値の元 cut（部分木）に適用して同定する" if method == "matcher" else "代表値トークンの署名述語 $\\pi_p$ で同定する"
+    ident = "事前分析と同一の matcher を代表値の元 cut（部分木）に適用して同定する"
     lines = []
     lines.append(r"\begin{table*}[t]")
     lines.append(r"  \centering")
@@ -306,27 +308,17 @@ def build_latex(rows: list[dict], gp_sizes: dict[int, int], method: str) -> str:
 # ---------------------------------------------------------------------------
 def main():
     """全16設定×7パターンを評価し、CSV と Table II(LaTeX) を出力する。"""
-    ap = argparse.ArgumentParser()
-    ap.add_argument(
-        "--method",
-        default="matcher",
-        choices=["matcher", "lexical"],
-        help="クラスタ同定方式（既定: matcher＝cut部分木へmatcherを流す）",
-    )
-    args = ap.parse_args()
-
     gp = load_ground_truth()
     gp_sizes = {p: len(gp[p]) for p in TARGET_PATTERNS}
-    print("method:", args.method)
     print("G_p sizes (diff_linked):", gp_sizes)
 
     match_cache: dict[tuple[int, str], frozenset[int]] = {}
-    if args.method == "matcher":
-        print("collecting representative ids per depth ...")
-        needed = collect_rep_ids_per_depth()
-        print({d: len(s) for d, s in needed.items()})
-        print("building match cache by streaming cutouts.json (one pass) ...")
-        match_cache = build_match_cache(needed)
+
+    print("collecting representative ids per depth ...")
+    needed = collect_rep_ids_per_depth()
+    print({d: len(s) for d, s in needed.items()})
+    print("building match cache by streaming cutouts.json (one pass) ...")
+    match_cache = build_match_cache(needed)
 
     rows: list[dict] = []
     for tau_dir, tau_disp in TAUS:
@@ -334,17 +326,12 @@ def main():
             for depth, s_disp in SIGMAS:
                 parsed = load_setting(tau_dir, level_dir, depth)
                 for p in TARGET_PATTERNS:
-                    if args.method == "matcher":
 
-                        def satisfy(cid, _p=p, _depth=depth, _parsed=parsed):
-                            rid = _parsed[cid][1]
-                            if rid is None:
-                                return False
-                            return _p in match_cache.get((int(rid), _depth), frozenset())
-                    else:
-
-                        def satisfy(cid, _p=p, _parsed=parsed):
-                            return pi_predicate(_p, _parsed[cid][2])
+                    def satisfy(cid, _p=p, _depth=depth, _parsed=parsed):
+                        rid = _parsed[cid][1]
+                        if rid is None:
+                            return False
+                        return _p in match_cache.get((int(rid), _depth), frozenset())
 
                     res = evaluate(parsed, gp[p], satisfy)
                     rows.append(
@@ -391,12 +378,12 @@ def main():
     print("wrote", csv_path)
 
     # LaTeX
-    tex = build_latex(rows, gp_sizes, args.method)
+    tex = build_latex(rows, gp_sizes)
     (OUT_DIR / "rq1_matrix.tex").write_text(tex)
     print("wrote", OUT_DIR / "rq1_matrix.tex")
 
     # コンソール可読マトリクス
-    print(f"\n=== Recall matrix ({args.method})  R_union/R_max  ('--'=no identified non-iso cluster) ===")
+    print("\n=== Recall matrix R_union/R_max  ('--'=no identified non-iso cluster) ===")
     print("tau       alpha  sigma     " + "      ".join(f"P{p}" for p in TARGET_PATTERNS))
     by_setting = defaultdict(dict)
     for r in rows:

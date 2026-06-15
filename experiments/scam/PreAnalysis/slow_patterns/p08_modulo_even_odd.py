@@ -13,14 +13,13 @@ from collections.abc import Iterator
 from hayalab.classes.gumtree import ASTNode
 
 from ..ast_nav import (
-    get_binary_lhs,
     get_binary_operator,
     get_binary_rhs,
     is_number_literal,
     match_either,
     walk_pre,
 )
-from .base import PatternMatch
+from .base import PatternMatch, make_pattern_match
 
 _EQ_OPS: frozenset[str] = frozenset({"==", "==="})
 
@@ -87,21 +86,4 @@ class ModuloEvenOddMatcher:
             if result is None:
                 continue
 
-            begin = nodes[idx].begin
-            end = nodes[idx].end
-            snippet = code[begin:end][:200]
-            yield PatternMatch(
-                mb_id=mb_id,
-                side="base",
-                pattern_id=self.pattern_id,
-                confidence="high",
-                node_index=idx,
-                begin=begin,
-                end=end,
-                snippet=snippet,
-            )
-
-
-def _unused_import_guard() -> None:
-    """使用されていないインポートを回避するためのダミー関数。"""
-    _ = get_binary_lhs
+            yield make_pattern_match(nodes, idx, code, mb_id=mb_id, pattern_id=self.pattern_id, confidence="high")

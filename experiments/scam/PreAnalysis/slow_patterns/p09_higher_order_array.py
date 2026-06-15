@@ -16,7 +16,7 @@ from ..ast_nav import (
     get_member_property_name,
     walk_pre,
 )
-from .base import PatternMatch
+from .base import PatternMatch, make_pattern_match
 
 # TODO: reduce/forEach/map/filter 以外も追加するか？ some/every/find なども高階関数の可能性があるが、信頼度はさらに下がるため要注意
 # _HIGHER_ORDER_METHODS: frozenset[str] = frozenset({"forEach", "map", "flatMap", "reduce", "reduceRight", "filter", "find", "findIndex", "findLastIndex", "findLast", "some", "every"})
@@ -65,16 +65,4 @@ class HigherOrderArrayMatcher:
             if not has_callback:
                 continue
 
-            begin = nodes[idx].begin
-            end = nodes[idx].end
-            snippet = code[begin:end][:200]
-            yield PatternMatch(
-                mb_id=mb_id,
-                side="base",
-                pattern_id=self.pattern_id,
-                confidence="low",
-                node_index=idx,
-                begin=begin,
-                end=end,
-                snippet=snippet,
-            )
+            yield make_pattern_match(nodes, idx, code, mb_id=mb_id, pattern_id=self.pattern_id, confidence="low")

@@ -446,7 +446,7 @@ _MIN_ANCHOR_DEPTH = 1
 
 
 def _is_useful_anchor(nodes: list[ASTNode], idx: int) -> bool:
-    """idx が anchor として使える程度に局所的か（program 等の最上位でないか）判定する。
+    """Anchor として使える程度に局所的なノードか（program 等の最上位ではないか）判定する。
 
     Args:
         nodes: ASTNode リスト。

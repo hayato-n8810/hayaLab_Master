@@ -21,7 +21,7 @@ from ..ast_nav import (
     match_either,
     walk_pre,
 )
-from .base import PatternMatch
+from .base import PatternMatch, make_pattern_match
 
 _CMP_OPS: frozenset[str] = frozenset({"==", "===", "!=", "!=="})
 
@@ -57,19 +57,6 @@ def _is_substr_prefix_call(nodes: list[ASTNode], idx: int) -> bool:
         return False
 
 
-def _is_any_expr(nodes: list[ASTNode], idx: int) -> bool:
-    """任意の式ノードか（右辺には何でも来る）。
-
-    Args:
-        nodes: ASTNode のリスト（未使用）。
-        idx: チェック対象ノードのインデックス（未使用）。
-
-    Returns:
-        常に True。
-    """
-    return True
-
-
 class SubstrPrefixCmpMatcher:
     """Pattern 5: substr(0, N) ==|=== str による先頭比較を検出する matcher。"""
 
@@ -95,20 +82,8 @@ class SubstrPrefixCmpMatcher:
             if op not in _CMP_OPS:
                 continue
 
-            result = match_either(nodes, idx, _is_substr_prefix_call, _is_any_expr)
+            result = match_either(nodes, idx, _is_substr_prefix_call, lambda _n, _i: True)
             if result is None:
                 continue
 
-            begin = nodes[idx].begin
-            end = nodes[idx].end
-            snippet = code[begin:end][:200]
-            yield PatternMatch(
-                mb_id=mb_id,
-                side="base",
-                pattern_id=self.pattern_id,
-                confidence="high",
-                node_index=idx,
-                begin=begin,
-                end=end,
-                snippet=snippet,
-            )
+            yield make_pattern_match(nodes, idx, code, mb_id=mb_id, pattern_id=self.pattern_id, confidence="high")

@@ -16,7 +16,6 @@ from collections.abc import Iterator
 from hayalab.classes.gumtree import ASTNode
 
 from ..ast_nav import (
-    direct_children,
     find_first_child,
     get_binary_operator,
     get_call_callee,
@@ -26,7 +25,7 @@ from ..ast_nav import (
     match_either,
     walk_pre,
 )
-from .base import PatternMatch
+from .base import PatternMatch, make_pattern_match
 
 _EQ_OPS: frozenset[str] = frozenset({"==", "==="})
 
@@ -104,21 +103,4 @@ class ToStringCallMatcher:
             if result is None:
                 continue
 
-            begin = nodes[idx].begin
-            end = nodes[idx].end
-            snippet = code[begin:end][:200]
-            yield PatternMatch(
-                mb_id=mb_id,
-                side="base",
-                pattern_id=self.pattern_id,
-                confidence="medium",
-                node_index=idx,
-                begin=begin,
-                end=end,
-                snippet=snippet,
-            )
-
-
-def _unused_import_guard() -> None:
-    """使用されていないインポートを回避するためのダミー関数。"""
-    _ = direct_children
+            yield make_pattern_match(nodes, idx, code, mb_id=mb_id, pattern_id=self.pattern_id, confidence="medium")

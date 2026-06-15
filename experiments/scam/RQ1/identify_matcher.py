@@ -30,6 +30,15 @@ from pathlib import Path
 # ---------------------------------------------------------------------------
 # hayalab.classes.gumtree（pydantic のみ依存）をスタブ経由で読み込み，
 # hayalab パッケージ本体（scipy 等の重い依存）の import を回避する。
+#
+# matcher (PreAnalysis/slow_patterns/*) は ``hayalab.classes.gumtree.ASTNode``
+# だけを参照するため，パッケージ全体 import は無駄に重い。本 hack は
+# ``hayalab`` と ``hayalab.classes`` を空モジュール扱いの sys.modules スタブ
+# として注入し，gumtree.py だけを spec から直接ロードする。
+#
+# Phase 2（``hayalab/scam/match/`` 移動）で slow_patterns 群を hayalab に
+# 取り込んだ際に，この hack は不要になる予定（素直に
+# ``from hayalab.scam.match import ...`` で参照できる）。
 # ---------------------------------------------------------------------------
 ROOT = Path(__file__).resolve().parents[3]
 

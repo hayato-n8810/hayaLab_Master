@@ -1,12 +1,12 @@
 """Representative_value 共通ユーティリティ.
 
-integrate.py のクラスタ結果と show_label.py の label を入力に、各クラスの
-「代表 value」をいくつかの戦略で算出するための共有処理を提供する。
+`integrate.py` のクラスタ結果と `show_label.py` の label を入力に、各クラスの
+「代表 value」を算出するための共有 I/O 処理を提供する。
 
-* ``integrate.py`` の bigram トークン化と互換な ``bigrams_from_nodes`` を持つ
-  ことで、Jaccard 由来の medoid / 共通 bigram 計算がクラスタ生成と整合する。
-* path 解決は ``hayalab.config.PathConfig`` に従い、 ``experiments`` 側で
-  決定する（ライブラリは I/O パスを決定しない原則）。
+純粋ロジック（normalize_value / tokens_from_nodes / bigrams_from_nodes / jaccard /
+member_to_mb_id / NGRAMS_CACHE_*）は `integrate.py` 側に集約し、本モジュールは
+そこから re-export する。 path 解決・cache 読み込み・並列実行制御だけが本モジュール
+固有の責務。
 
 データ前提:
     入力 cluster: ``outputs/scam/approach/integrate/{tau_dir}/level{L}/{depth}/{depth}.json``
@@ -22,7 +22,7 @@ cutout_id は ``"{mb_id}_{depth}"`` 形式（integrate.py と同様）。
 from __future__ import annotations
 
 import pickle
-import re
+import sys
 from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
@@ -31,56 +31,48 @@ from typing import Any
 import hayalab
 from hayalab.config import PathConfig
 
-DEPTHS: tuple[str, ...] = ("Diff", "Brother", "ExParent", "Parent")
+# integrate.py を sibling import で読み込み（実験スクリプト同士の参照は許容）。
+_APPROACH_DIR = Path(__file__).resolve().parent.parent
+if str(_APPROACH_DIR) not in sys.path:
+    sys.path.insert(0, str(_APPROACH_DIR))
 
-# integrate.py と同じ slot 番号正規化（``$v0`` → ``$v``）。
-_SLOT_NUM_RE = re.compile(r"^\$([vfkns])\d+$")
+from integrate import (  # noqa: E402  -- sys.path 操作後の sibling import
+    DEPTHS,
+    NGRAMS_CACHE_SCHEMA,
+    NGRAMS_CACHE_VERSION,
+    bigrams_from_nodes,
+    is_cache_fresh,
+    jaccard,
+    member_to_mb_id,
+    node_token,
+    normalize_value,
+    tokens_from_nodes,
+)
 
-# integrate.py の ``NGRAMS_CACHE_VERSION`` と整合させる。
-NGRAMS_CACHE_VERSION = 2
-NGRAMS_CACHE_SCHEMA = "abst_id_to_features_v2"
-
-
-def normalize_value(value: str | None) -> str:
-    """Slot 番号を捨てて slot タイプのみに正規化する（integrate.py と同義）."""
-    if value is None:
-        return ""
-    m = _SLOT_NUM_RE.match(value)
-    if m:
-        return f"${m.group(1)}"
-    return value
-
-
-def _node_token(node: dict[str, Any]) -> tuple[str, str]:
-    return (node["name"], normalize_value(node.get("value")))
-
-
-def tokens_from_nodes(nodes: list[dict[str, Any]]) -> list[tuple[str, str]]:
-    """``variadic=True`` を除外した ``(name, normalized_value)`` トークン列."""
-    return [_node_token(n) for n in nodes if not n.get("variadic", False)]
-
-
-def bigrams_from_nodes(nodes: list[dict[str, Any]]) -> frozenset[tuple[tuple[str, str], tuple[str, str]]]:
-    """integrate.py の bigram と同一の集合を返す（クラスタ定義と整合）."""
-    toks = tokens_from_nodes(nodes)
-    if len(toks) < 2:
-        return frozenset()
-    return frozenset(tuple(toks[i : i + 2]) for i in range(len(toks) - 1))
-
-
-def jaccard(a: frozenset, b: frozenset) -> float:
-    """Frozenset の Jaccard 係数（両者空のとき 1.0）."""
-    if not a and not b:
-        return 1.0
-    inter = len(a & b)
-    union = len(a) + len(b) - inter
-    return inter / union if union else 0.0
-
-
-def member_to_mb_id(member: str) -> int:
-    """cutout_id ``"{mb_id}_{depth}"`` → ``mb_id``（int）."""
-    mb_id_str, _depth = member.rsplit("_", 1)
-    return int(mb_id_str)
+__all__ = [
+    # integrate.py からの re-export（純粋ロジック）
+    "DEPTHS",
+    "NGRAMS_CACHE_SCHEMA",
+    "NGRAMS_CACHE_VERSION",
+    "bigrams_from_nodes",
+    "is_cache_fresh",
+    "jaccard",
+    "member_to_mb_id",
+    "node_token",
+    "normalize_value",
+    "tokens_from_nodes",
+    # I/O ヘルパー（このモジュール固有）
+    "abstract_path",
+    "bigrams_cache_path",
+    "integrate_dir",
+    "iter_targets",
+    "load_id_to_bigrams",
+    "load_id_to_bigrams_cached",
+    "load_id_to_tokens",
+    "read_inputs",
+    "run_parallel",
+    "write_output",
+]
 
 
 def load_id_to_bigrams(records: list[dict[str, Any]], depth: str) -> dict[int, frozenset]:
@@ -101,7 +93,7 @@ def load_id_to_tokens(
 
     bigram 構築の元となる **AST node token 列**（``tokens_from_nodes``）をそのまま
     位置情報付きで保持する。 bigram cache は順序を捨てて frozenset 化しているため
-    位置別の skeleton 計算には使えず、 ここでは abstract JSON を直接読む。
+    位置情報が必要な用途では abstract JSON を直接読む必要がある。
 
     Returns:
         各 depth の ``{mb_id: [(name, normalized_value), ...]}``。
@@ -143,21 +135,6 @@ def bigrams_cache_path(config: PathConfig, level: int, n_value: int = 2) -> Path
     return abstract_path(config, level).with_name(f"bigrams_level{level}_n{n_value}.pkl")
 
 
-def _is_cache_fresh(cache_path: Path, source_path: Path) -> bool:
-    """Cache が存在し source より新しければ ``True``.
-
-    どちらかが欠けていれば ``False``。 source が将来時刻を持っているなど
-    異常時も新鮮ではないとして fallback に倒す。
-    """
-    if not cache_path.exists():
-        return False
-    if not source_path.exists():
-        # source 無し & cache あり: cache は陳腐化判定不能。とりあえず新鮮として
-        # 扱う（integrate が古い state で書いた cache を使うリスクは低い）。
-        return True
-    return cache_path.stat().st_mtime >= source_path.stat().st_mtime
-
-
 def load_id_to_bigrams_cached(
     config: PathConfig,
     level: int,
@@ -167,9 +144,9 @@ def load_id_to_bigrams_cached(
 
     1. ``bigrams_level{L}_n{N}.pkl`` が abstract JSON より新しければ pickle を
        読む（[BIGRAMS] cache hit）。
-    2. pickle がなければ abstract JSON を読み、 ``build_id_to_bigrams_table``
-       で計算して返す（[BIGRAMS] cache miss → fallback (json)）。
-       cache の書き出しは行わない（producer は ``integrate.py`` に一本化）。
+    2. pickle がなければ abstract JSON を読み、 ``bigrams_from_nodes`` で計算して
+       返す（[BIGRAMS] cache miss → fallback (json)）。 cache の書き出しは行わない
+       （producer は ``integrate.py`` に一本化）。
     3. cache も abstract JSON も無ければ ``None`` を返す。
 
     Args:
@@ -183,14 +160,14 @@ def load_id_to_bigrams_cached(
     cache_p = bigrams_cache_path(config, level, n_value)
     abs_p = abstract_path(config, level)
 
-    if _is_cache_fresh(cache_p, abs_p):
+    if is_cache_fresh(cache_p, abs_p):
         with cache_p.open("rb") as f:
             payload = pickle.load(f)  # noqa: S301 -- 自己生成のローカル cache
         if payload.get("version") == NGRAMS_CACHE_VERSION and payload.get("schema") == NGRAMS_CACHE_SCHEMA:
             # producer (integrate.py) は v2 スキーマで bigram を ``bigrams``
-            # キーに格納する（``data`` ではない）。 unigram-only / excluded は
-            # 別キーだが、 medoid は bigram のみ参照し、 利用側が ``.get(id,
-            # frozenset())`` で空集合を補うため bigrams だけ返せば fallback と等価。
+            # キーに格納する。 unigram-only / excluded は別キーだが、 medoid は
+            # bigram のみ参照し、 利用側が ``.get(id, frozenset())`` で空集合を
+            # 補うため bigrams だけ返せば fallback と等価。
             bigrams = payload.get("bigrams")
             if isinstance(bigrams, dict):
                 print(f"[BIGRAMS] cache hit: {cache_p}", flush=True)

@@ -8,8 +8,8 @@
 
 処理:
     各クラスのメンバー ``"{id}_{depth}"`` について、対応する level・depth の cutout
-    から value を ``_build_program_born`` で収集し、クラスごとに ``{id, value}`` を
-    列挙する。
+    から終端ノード（``"name: value"`` 形式の label を持つノード）の value を空白区切りで
+    連結し、クラスごとに ``{id, value}`` を列挙する。
 
 出力:
     outputs/scam/approach/integrate/{tau_dir}/level{L}/{depth}/{depth}_label.json
@@ -17,71 +17,29 @@
 
 実行例:
     uv run python experiments/scam/approach/show_label.py
-    uv run python experiments/scam/approach/show_label.py --tau-dir jaccard07 --levels 0 1
+    uv run python experiments/scam/approach/show_label.py --tau-dir jaccard07 --levels 1 2
 """
 
 from __future__ import annotations
 
 import argparse
 import re
+import sys
 from pathlib import Path
 from typing import Any
 
 import hayalab
 from hayalab.config import PathConfig
 
-# cutout depth の順序（integrate / abstract と整合）。
-DEPTHS: tuple[str, ...] = ("Diff", "Brother", "ExParent", "Parent")
+# sibling import: 同じ approach/ 内の integrate.py から member_to_mb_id を共有する。
+_APPROACH_DIR = Path(__file__).resolve().parent
+if str(_APPROACH_DIR) not in sys.path:
+    sys.path.insert(0, str(_APPROACH_DIR))
+
+from integrate import DEPTHS, member_to_mb_id  # noqa: E402  -- sibling import 後
 
 # 終端ノード判定: ``"name: value [...]"`` 形式の label にマッチ。
 _TERMINAL_LABEL_RE = re.compile(r"([^ ]+): (.+)")
-
-
-def _build_program_born(nodes: list[dict[str, Any]]) -> dict[str, str]:
-    """Cutout の nodes から終端ノードの value をスペース区切りで連結する。
-
-    Args:
-        nodes: cutout の ``nodes`` リスト。
-
-    Returns:
-        ``{"full": "<value value ...>"}``。label が ``"name: value"`` 形式
-        （終端ノード）のもののみ value を採用する。
-    """
-    program_born_full = ""
-    for node in nodes:
-        if _TERMINAL_LABEL_RE.match(node["label"]):
-            value = node["value"]
-            program_born_full += f"{value} "
-    return {"full": program_born_full}
-
-
-def target_cutouts(data: list[dict[str, Any]], output_path: Path) -> None:
-    """01_cutouts.json 形式（id ごとの cutouts スコープ集合）から label bone を構築する。
-
-    Args:
-        data: ``[{"id": int, "cutouts": {scope_name: {"nodes": [...]}}}]`` 形式のリスト。
-        output_path: 出力先パス。
-
-    出力構造:
-        ``{id: {scope_name: {"full": str}}}``
-    """
-    result = {}
-    for entry in data:
-        entry_id = entry["id"]
-        cutouts = entry["cutouts"]
-        result[entry_id] = {scope_name: _build_program_born(scope["nodes"]) for scope_name, scope in cutouts.items()}
-
-    hayalab.write_json(str(output_path), result)
-
-
-def _member_to_mb_id(member: str) -> int:
-    """cutout_id ``"{mb_id}_{depth}"`` から mb_id（int）を取り出す。
-
-    depth 名にはアンダースコアが含まれないため、末尾の ``_{depth}`` を 1 回だけ
-    分割して mb_id を得る。
-    """
-    mb_id_str, _depth = member.rsplit("_", 1)
-    return int(mb_id_str)
 
 
 def _labels_for_class(
@@ -90,6 +48,9 @@ def _labels_for_class(
     id_to_cutouts: dict[int, dict[str, Any]],
 ) -> list[dict[str, Any]]:
     """1 クラスのメンバー列から ``{id, value}`` の列を作る。
+
+    各メンバーの value は cutout の終端ノード（label が ``"name: value"`` 形式）の
+    value をスペース区切りで連結した文字列。
 
     Args:
         members: ``"{id}_{depth}"`` 形式の cutout_id リスト。
@@ -101,10 +62,13 @@ def _labels_for_class(
     """
     rows: list[dict[str, Any]] = []
     for member in members:
-        mb_id = _member_to_mb_id(member)
+        mb_id = member_to_mb_id(member)
         cutouts = id_to_cutouts.get(mb_id, {})
         cutout = cutouts.get(depth)
-        value = _build_program_born(cutout["nodes"])["full"] if cutout else ""
+        if cutout:
+            value = "".join(f"{node['value']} " for node in cutout["nodes"] if _TERMINAL_LABEL_RE.match(node["label"]))
+        else:
+            value = ""
         rows.append({"id": mb_id, "value": value})
     return rows
 
@@ -141,8 +105,8 @@ def parse_args() -> argparse.Namespace:
         "--levels",
         type=int,
         nargs="+",
-        default=[0, 1, 2, 3],
-        help="処理する抽象化レベル (default: 0 1 2 3)",
+        default=[1, 2],
+        help="処理する抽象化レベル (default: 1 2)",
     )
     return parser.parse_args()
 

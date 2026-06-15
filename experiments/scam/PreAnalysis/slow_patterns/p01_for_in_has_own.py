@@ -17,7 +17,6 @@ from collections.abc import Iterator
 from hayalab.classes.gumtree import ASTNode
 
 from ..ast_nav import (
-    find_first_child,
     first_named_statement,
     get_call_callee,
     get_for_in_body,
@@ -28,7 +27,7 @@ from ..ast_nav import (
     named_children,
     walk_pre,
 )
-from .base import PatternMatch
+from .base import PatternMatch, make_pattern_match
 
 
 def _get_for_in_right(nodes: list[ASTNode], for_in_idx: int) -> int | None:
@@ -111,55 +110,4 @@ class ForInHasOwnMatcher:
                     if nodes[member_obj].value == nodes[right_idx].value:
                         confidence = "high"
 
-            begin = nodes[idx].begin
-            end = nodes[idx].end
-            snippet = code[begin:end][:200]
-            yield PatternMatch(
-                mb_id=mb_id,
-                side="base",
-                pattern_id=self.pattern_id,
-                confidence=confidence,
-                node_index=idx,
-                begin=begin,
-                end=end,
-                snippet=snippet,
-            )
-
-
-def _find_if_from_block_or_direct(nodes: list[ASTNode], body_idx: int) -> int | None:
-    """statement_block から最初の if_statement を探す（内部ヘルパー）。
-
-    Args:
-        nodes: ASTNode のリスト。
-        body_idx: body ノードのインデックス。
-
-    Returns:
-        if_statement のインデックス、なければ None。
-    """
-    if nodes[body_idx].name == "statement_block":
-        stmt = first_named_statement(nodes, body_idx)
-        if stmt is not None and nodes[stmt].name == "if_statement":
-            return stmt
-    elif nodes[body_idx].name == "if_statement":
-        return body_idx
-    return None
-
-
-def _find_call_in_if(nodes: list[ASTNode], if_idx: int) -> int | None:
-    """if_statement の条件から call_expression を取得する（内部ヘルパー）。
-
-    Args:
-        nodes: ASTNode のリスト。
-        if_idx: if_statement ノードのインデックス。
-
-    Returns:
-        call_expression のインデックス、なければ None。
-    """
-    paren = find_first_child(nodes, if_idx, "parenthesized_expression")
-    if paren is None:
-        return None
-    nc = named_children(nodes, paren)
-    if not nc:
-        return None
-    cond = nc[0]
-    return cond if nodes[cond].name == "call_expression" else None
+            yield make_pattern_match(nodes, idx, code, mb_id=mb_id, pattern_id=self.pattern_id, confidence=confidence)

@@ -6,7 +6,7 @@ Selakovic & Pradel (2016) が定義した 10 種類の低速 JavaScript パタ�
 
 ただし，fast側は見ないので従来研究のafterに向けた比較になっているかはわからない．一応，変更差分内に該当箇所が含まれているかは見ている
 
-ルールを4項目（詳細はsrc/hayalab/tmp/diff_link.py）設定し，結果のsample配下のjsonlにおけるdiff_resonにパスした条件を示す．目視で見た限りclear_1_4が従来パターンを前後ともに示している完全パターンである
+ルールを4項目（詳細は `experiments/scam/PreAnalysis/diff_link.py`）設定し，結果のsample配下のjsonlにおけるdiff_resonにパスした条件を示す．目視で見た限りclear_1_4が従来パターンを前後ともに示している完全パターンである
 
 ## 具体的な検出ロジックは .agent/docs/slow_pattern_detection.md を参照
 
@@ -18,7 +18,7 @@ Selakovic & Pradel (2016) が定義した 10 種類の低速 JavaScript パタ�
 ### 全件処理
 
 ```bash
-uv run python experiments/tmp/slow_pattern_detect/run.py \
+uv run python experiments/scam/PreAnalysis/run.py \
     --input data/processed/MBDiff.json \
     --output-dir outputs/tmp/slow_patterns \
     --patterns 1,2,3,4,5,6,7,8,9,10 \
@@ -28,7 +28,7 @@ uv run python experiments/tmp/slow_pattern_detect/run.py \
 ### サンプルドライラン（先頭 100 件）
 
 ```bash
-uv run python experiments/tmp/slow_pattern_detect/run.py \
+uv run python experiments/scam/PreAnalysis/run.py \
     --input data/processed/_sample.json \
     --output-dir outputs/tmp/slow_patterns_sample \
     --limit 100
@@ -37,7 +37,7 @@ uv run python experiments/tmp/slow_pattern_detect/run.py \
 ### Stage B 無効（Stage A のみ）
 
 ```bash
-uv run python experiments/tmp/slow_pattern_detect/run.py \
+uv run python experiments/scam/PreAnalysis/run.py \
     --input data/processed/MBDiff.json \
     --output-dir outputs/tmp/slow_patterns_stagea \
     --no-stage-b
@@ -72,17 +72,19 @@ outputs/tmp/slow_patterns/
 テスト用フィクスチャを生成する補助スクリプト:
 
 ```bash
-uv run python experiments/tmp/slow_pattern_detect/build_fixtures.py
+uv run python experiments/scam/PreAnalysis/build_fixtures.py
 ```
 
-`outputs/tmp/previous_ast.json` の id_1〜id_10 を
-`tests/tmp/pattern_detection/fixtures/before/` に展開する。
+`outputs/tmp/previous_ast.json` の id_1〜id_10 を、対応するフィクスチャ
+ディレクトリに展開する（Phase 2 で `tests/scam/` 整備時に再構成予定）。
 
 ## アーキテクチャ
 
-- `src/hayalab/tmp/ast_nav.py` — フラット AST ナビゲーションヘルパー（純関数）
-- `src/hayalab/tmp/slow_patterns/` — パターン別 matcher 群
-- `src/hayalab/tmp/diff_link.py` — Stage B diff 連動フィルタ
-- `experiments/tmp/slow_pattern_detect/run.py` — 本スクリプト（I/O・パス決定）
+- `experiments/scam/PreAnalysis/ast_nav.py` — フラット AST ナビゲーションヘルパー（純関数）
+- `experiments/scam/PreAnalysis/slow_patterns/` — パターン別 matcher 群
+- `experiments/scam/PreAnalysis/diff_link.py` — Stage B diff 連動フィルタ
+- `experiments/scam/PreAnalysis/run.py` — 本スクリプト（I/O・パス決定）
 
-境界規約: `src/hayalab/tmp/` は I/O 禁止。パス決定・ファイル書き出しは本スクリプトのみ担当。
+境界規約: 純粋ロジック（ast_nav / slow_patterns / diff_link）は I/O 禁止。
+パス決定・ファイル書き出しは `run.py` のみ担当。 Phase 2 で `hayalab/scam/`
+への移動を計画中。

@@ -17,7 +17,7 @@ from ..ast_nav import (
     is_empty_string_literal,
     walk_pre,
 )
-from .base import PatternMatch
+from .base import PatternMatch, make_pattern_match
 
 
 class JQueryHtmlEmptyMatcher:
@@ -57,16 +57,4 @@ class JQueryHtmlEmptyMatcher:
             if not is_empty_string_literal(nodes, args[0]):
                 continue
 
-            begin = nodes[idx].begin
-            end = nodes[idx].end
-            snippet = code[begin:end][:200]
-            yield PatternMatch(
-                mb_id=mb_id,
-                side="base",
-                pattern_id=self.pattern_id,
-                confidence="high",
-                node_index=idx,
-                begin=begin,
-                end=end,
-                snippet=snippet,
-            )
+            yield make_pattern_match(nodes, idx, code, mb_id=mb_id, pattern_id=self.pattern_id, confidence="high")

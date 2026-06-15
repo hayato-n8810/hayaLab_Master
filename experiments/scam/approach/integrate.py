@@ -47,11 +47,11 @@ class_id prefix:
 * ``L{level}_M2_{hash8}``: bigram Jaccard 由来のクラスタ。
 * ``L{level}_U1_{hash8}``: unigram 完全一致 由来のクラスタ。
 
-Cache pickle (v3):
+Cache pickle (v2):
     outputs/scam/approach/abstract/bigrams_level{L}_n{N}.pkl
     {
-        "version": 3,
-        "schema": "abst_id_to_features_v3",
+        "version": 2,
+        "schema": "abst_id_to_features_v2",
         "level": L,
         "n": N,
         "bigrams":  {depth: {mb_id: frozenset(bigrams)}},  # n_t >= n のみ
@@ -84,7 +84,7 @@ unigram クラスタは [integrate._group_unigrams](integrate.py) の完全一�
 
 実行例:
     uv run python experiments/scam/approach/integrate.py --taus 0.7 0.9 --workers 40
-    uv run python experiments/scam/approach/integrate.py --levels 0 --taus 0.7
+    uv run python experiments/scam/approach/integrate.py --levels 1 --taus 0.7
 """
 
 from __future__ import annotations
@@ -115,7 +115,7 @@ ROOT = Path(__file__).resolve().parents[3]
 
 
 # ---------------------------------------------------------------------------
-# Tokenization (m2_path_ngram.py と共通の規約)
+# Tokenization (公開: Representative_value / RQ2 から再利用される純粋ロジック)
 # ---------------------------------------------------------------------------
 
 
@@ -137,21 +137,55 @@ def normalize_value(value: str | None) -> str:
     return value
 
 
-def _node_token(node: dict) -> tuple[str, str]:
+def node_token(node: dict) -> tuple[str, str]:
     """ノード dict を canonical な ``(name, normalized_value)`` タプルに縮約する。"""
     return (node["name"], normalize_value(node.get("value")))
 
 
-def _tokens(nodes: list[dict]) -> list[tuple[str, str]]:
+def tokens_from_nodes(nodes: list[dict]) -> list[tuple[str, str]]:
     """``variadic=True`` のノードを除外したトークン列を返す。"""
-    return [_node_token(n) for n in nodes if not n.get("variadic", False)]
+    return [node_token(n) for n in nodes if not n.get("variadic", False)]
 
 
-def _ngrams(tokens: list[tuple[str, str]], n: int) -> list[tuple]:
+def ngrams(tokens: list[tuple[str, str]], n: int) -> list[tuple]:
     """トークン列から n-gram（n 個連続トークンのタプル）の列を返す。"""
     if len(tokens) < n:
         return []
     return [tuple(tokens[i : i + n]) for i in range(len(tokens) - n + 1)]
+
+
+def bigrams_from_nodes(nodes: list[dict]) -> frozenset[tuple[tuple[str, str], tuple[str, str]]]:
+    """ノード列から bigram frozenset を返す（クラスタ生成と同一定義）。
+
+    ``variadic=True`` のノードは除外する。 有効トークン数 < 2 のときは空集合。
+    """
+    toks = tokens_from_nodes(nodes)
+    if len(toks) < 2:
+        return frozenset()
+    return frozenset(tuple(toks[i : i + 2]) for i in range(len(toks) - 1))
+
+
+def jaccard(a: frozenset, b: frozenset) -> float:
+    """Frozenset の Jaccard 係数（両者空のとき 1.0、片方空のとき 0.0）。
+
+    Args:
+        a: 集合 1。
+        b: 集合 2。
+
+    Returns:
+        ``|a ∩ b| / |a ∪ b|``。 両者空のときは ``1.0``、 union が 0 のときは ``0.0``。
+    """
+    if not a and not b:
+        return 1.0
+    inter = len(a & b)
+    union = len(a) + len(b) - inter
+    return inter / union if union else 0.0
+
+
+def member_to_mb_id(member: str) -> int:
+    """cutout_id ``"{mb_id}_{depth}"`` → ``mb_id``（int）。"""
+    mb_id_str, _depth = member.rsplit("_", 1)
+    return int(mb_id_str)
 
 
 # ---------------------------------------------------------------------------
@@ -276,7 +310,7 @@ def _group_identical(
     ids: list[str],
     sets: dict[str, frozenset],
 ) -> tuple[list[str], dict[str, frozenset], dict[str, list[str]]]:
-    """bigram 集合が完全一致する cutout を 1 代表にまとめる。
+    """Bigram 集合が完全一致する cutout を 1 代表にまとめる。
 
     完全一致集合同士は Jaccard=1.0 で自明にクリークを成すため、代表だけで類似度
     計算・併合判定を行えば計算量を削減できる（同一集合同士の計算を省く）。
@@ -639,7 +673,7 @@ def _features_cache_path(input_dir: Path, level: int, n_value: int) -> Path:
     return input_dir / f"bigrams_level{level}_n{n_value}.pkl"
 
 
-def _is_cache_fresh(cache_path: Path, source_path: Path) -> bool:
+def is_cache_fresh(cache_path: Path, source_path: Path) -> bool:
     """``cache_path`` が存在し ``source_path`` 以降の mtime ならば ``True``。"""
     if not cache_path.exists():
         return False
@@ -746,12 +780,12 @@ def _extract_features(
             cutout = cutouts.get(depth)
             if not cutout:
                 continue
-            tokens = _tokens(cutout.get("nodes", []))
+            tokens = tokens_from_nodes(cutout.get("nodes", []))
             n_t = len(tokens)
             if n_t == 0:
                 excluded[depth] += 1
             elif n_t >= n_value:
-                bigrams[depth][mb_id] = frozenset(_ngrams(tokens, n_value))
+                bigrams[depth][mb_id] = frozenset(ngrams(tokens, n_value))
             else:
                 unigrams[depth][mb_id] = tuple(tokens)
     return bigrams, unigrams, excluded
@@ -773,7 +807,7 @@ def parse_args() -> argparse.Namespace:
         "--levels",
         type=int,
         nargs="+",
-        default=[0, 1, 2, 3],
+        default=[1, 2],
         help="処理する抽象化レベル（入力ファイルが存在するもののみ処理）",
     )
     parser.add_argument(
@@ -823,7 +857,7 @@ def main() -> None:
         features: tuple[dict, dict, dict] | None = None
 
         # 1. --create-cache 未指定 かつ cache が新鮮なら pickle を load（integrate と共有）
-        if not args.create_cache and _is_cache_fresh(cache_path, in_path):
+        if not args.create_cache and is_cache_fresh(cache_path, in_path):
             try:
                 features = _load_features_cache(cache_path)
                 print(f"[CACHE] fresh, loading from pickle: {cache_path}", flush=True)

@@ -24,6 +24,7 @@ from __future__ import annotations
 import csv
 import json
 import shutil
+import sys
 from difflib import unified_diff
 from pathlib import Path
 from typing import Any
@@ -31,6 +32,13 @@ from typing import Any
 import ijson
 
 from hayalab.config import PathConfig
+
+# sibling import: 同じ scam/approach/ 内の integrate.py から jaccard を共有する。
+_APPROACH_DIR = Path(__file__).resolve().parents[1] / "approach"
+if str(_APPROACH_DIR) not in sys.path:
+    sys.path.insert(0, str(_APPROACH_DIR))
+
+from integrate import jaccard  # noqa: E402  -- sibling import 後
 
 
 def extract_added_removed(base_code: str, head_code: str) -> tuple[str, str]:
@@ -84,8 +92,12 @@ SAMPLE_N = 5
 # ---------------------------------------------------------------------------
 
 
-def compute_bigrams(value: str) -> frozenset[tuple[str, str]]:
-    """トークン列文字列から bigram 集合を返す。
+def compute_string_bigrams(value: str) -> frozenset[tuple[str, str]]:
+    """スペース区切り**文字列**トークン列から bigram 集合を返す。
+
+    `integrate.bigrams_from_nodes` は AST ノード dict の列を入力に取るのに対し、
+    本関数は ``show_label.py`` 出力の ``value`` 文字列（スペース区切り）を
+    そのまま入力に取る。 用途が異なるため統合せず別関数として残している。
 
     Args:
         value: スペース区切りのトークン列。
@@ -95,22 +107,6 @@ def compute_bigrams(value: str) -> frozenset[tuple[str, str]]:
     """
     tokens = value.split()
     return frozenset(zip(tokens, tokens[1:])) if len(tokens) >= 2 else frozenset()
-
-
-def jaccard(a: frozenset[tuple[str, str]], b: frozenset[tuple[str, str]]) -> float:
-    """bigram 集合間の Jaccard 類似度を返す。
-
-    Args:
-        a: bigram 集合 A。
-        b: bigram 集合 B。
-
-    Returns:
-        |A ∩ B| / |A ∪ B|。両方空なら 1.0。
-    """
-    if not a and not b:
-        return 1.0
-    union = len(a | b)
-    return len(a & b) / union if union > 0 else 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -144,7 +140,7 @@ def load_cluster_data(level: str, depth: str) -> tuple[dict[str, list[int]], dic
     """クラスタのメンバーと mode_medoid 情報を読み込む。
 
     Args:
-        level: "level0" または "level1"。
+        level: "level1" または "level2"。
         depth: "Diff" または "Brother"。
 
     Returns:
@@ -184,7 +180,7 @@ def load_cluster_labels_for_ids(
     """必要な cluster_id 分だけ label データを返す。
 
     Args:
-        level: "level0" または "level1"。
+        level: "level1" または "level2"。
         depth: "Diff" または "Brother"。
         cluster_ids: 取得対象の cluster_id 集合。
 
@@ -269,12 +265,12 @@ def select_top_similar(
         [(mb_id, is_representative, similarity_to_rep), ...] を
         similarity 降順（同スコアは代表優先、次に mb_id 昇順）で返す。
     """
-    rep_bigrams = compute_bigrams(rep_value)
+    rep_bigrams = compute_string_bigrams(rep_value)
     scored: list[tuple[int, bool, float]] = []
     for item in labels:
         mb_id = item["id"]
         value = item.get("value", "")
-        sim = jaccard(rep_bigrams, compute_bigrams(value))
+        sim = jaccard(rep_bigrams, compute_string_bigrams(value))
         scored.append((mb_id, mb_id == representative_id, sim))
 
     # 類似度降順、同スコアは代表優先、次に mb_id 昇順

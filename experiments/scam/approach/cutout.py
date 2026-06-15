@@ -62,14 +62,6 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def determine_input(args: argparse.Namespace, pc: PathConfig) -> Path:
-    """入力パス決定。"""
-    if args.input is not None:
-        return args.input
-
-    return pc.processed / "MBDiff.json"
-
-
 def _build_cutout_entry(nodes: list[dict[str, Any]], diff_origin_set: set[int]) -> dict[str, Any]:
     """1 scope の merged.nodes から新スキーマ {diff_node_indices, nodes} を作る。
 
@@ -115,7 +107,7 @@ def main() -> None:
     """Stage 1 を実行する。"""
     args = parse_args()
     pc = PathConfig()
-    input_path = determine_input(args, pc)
+    input_path = args.input if args.input is not None else (pc.processed / "MBDiff.json")
     output_dir = args.output_dir or (pc.outputs / "scam" / "approach")
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / "cutouts.json"

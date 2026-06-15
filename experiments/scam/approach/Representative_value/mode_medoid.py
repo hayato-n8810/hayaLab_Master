@@ -34,7 +34,7 @@ bigram の定義は ``integrate.py`` と完全に同一（``_common.bigrams_from
 
 実行例:
     uv run python experiments/scam/approach/Representative_value/mode_medoid.py \\
-        --tau-dir jaccard07 --levels 0
+        --tau-dir jaccard07 --levels 1
 """
 
 from __future__ import annotations

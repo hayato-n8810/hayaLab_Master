@@ -64,34 +64,6 @@ _ALL_MATCHERS = [
 ]
 
 
-def _get_matchers(pattern_ids: list[int]) -> list:
-    """指定した pattern_id の matcher を返す。
-
-    Args:
-        pattern_ids: 処理対象のパターン番号リスト。
-
-    Returns:
-        matcher のリスト。
-    """
-    id_set = set(pattern_ids)
-    return [m for m in _ALL_MATCHERS if m.pattern_id in id_set]
-
-
-def _iter_records(input_path: Path) -> Any:
-    """Ijson でストリーミング読み込みを行う。
-
-    Args:
-        input_path: 入力 JSON のパス。
-
-    Yields:
-        各レコードの dict。
-    """
-    with open(input_path, "rb") as f:
-        items = ijson.items(f, "item")
-        for record in items:
-            yield record
-
-
 def _parse_actions(actions: list[dict[str, Any]]) -> list[GumAction]:
     """Actions リストを GumAction リストに変換する。
 
@@ -303,7 +275,8 @@ if __name__ == "__main__":
         print(f"[ERROR] Input file not found: {input_path}", file=sys.stderr)
         sys.exit(1)
 
-    matchers = _get_matchers(pattern_ids)
+    id_set = set(pattern_ids)
+    matchers = [m for m in _ALL_MATCHERS if m.pattern_id in id_set]
     print(f"Patterns: {[m.pattern_id for m in matchers]}")
     print(f"Input: {input_path}")
     print(f"Output: {output_dir}")
@@ -312,13 +285,14 @@ if __name__ == "__main__":
     hits_by_mb: dict[int, tuple[str, str]] = {}
     count = 0
 
-    for record in tqdm(_iter_records(input_path), desc="Processing", unit="rec"):
-        matches, base_code, head_code = process_record(record, matchers)
-        if matches:
-            mb_id = record.get("id", 0)
-            hits_by_mb[mb_id] = (base_code, head_code)
-            all_matches.extend(matches)
-        count += 1
+    with open(input_path, "rb") as f:
+        for record in tqdm(ijson.items(f, "item"), desc="Processing", unit="rec"):
+            matches, base_code, head_code = process_record(record, matchers)
+            if matches:
+                mb_id = record.get("id", 0)
+                hits_by_mb[mb_id] = (base_code, head_code)
+                all_matches.extend(matches)
+            count += 1
 
     print(f"Processed {count} records, found {len(all_matches)} matches total.")
     write_outputs(output_dir, all_matches, hits_by_mb)

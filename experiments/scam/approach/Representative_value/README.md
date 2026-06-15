@@ -1,10 +1,9 @@
 # Representative_value — クラスの代表 value 抽出
 
-`integrate.py` が生成したクラスタ（n-gram + Jaccard 貪欲併合）に対して、
-「このクラスのパターンはこれ」と人間に説明するための**代表 value**を
-4 通りの戦略で抽出する一連のスクリプト群。
+`integrate.py` が生成したクラスタ（n-gram + Jaccard complete-linkage 併合）に対して、
+「このクラスのパターンはこれ」と人間に説明するための**代表 value**を抽出するスクリプト群。
 
-戦略はそれぞれ独立したファイルに分けてあり、CLI から個別に呼び出せる。
+論文採用は `mode_medoid.py`（過半数 mode → bigram-Jaccard medoid の二段構え）のみ。
 共通処理（bigram トークン化、Jaccard、IO）は `_common.py` に集約しており、
 bigram の定義は `integrate.py` と完全に同一（クラスタ生成と整合）。
 
@@ -21,18 +20,18 @@ bigram の定義は `integrate.py` と完全に同一（クラスタ生成と整
 
 ## 出力
 
-各戦略は同じ `level{L}/` 配下に戦略別 JSON を書き出す:
+同じ `level{L}/` 配下に代表 value JSON を書き出す:
 
 ```
 outputs/scam/approach/integrate/{tau_dir}/level{L}/
 ├── {depth}.json                           # integrate.py 出力（既存）
 ├── {depth}_label.json                     # show_label.py 出力（既存）
-└── {depth}_pattern_mode_medoid.json       # 戦略 1
+└── {depth}_pattern_mode_medoid.json       # mode_medoid.py の出力
 ```
 
-## 戦略一覧
+## 戦略
 
-### `mode_medoid.py` — mode + medoid 二段構え（推奨）
+### `mode_medoid.py` — mode + medoid 二段構え
 
 1. クラスメンバーの label value 文字列を集計し、**過半数 (support > size/2)** を占める value があればそれを mode として採用。
 2. 過半数 mode が無ければ **bigram-Jaccard medoid**（他メンバーへの Jaccard 平均最大のメンバー、同点は id 昇順）を採用。
@@ -62,7 +61,7 @@ outputs/scam/approach/integrate/{tau_dir}/level{L}/
 
 ## 並列化
 
-各戦略は **クラス単位**（`(class_id, rows)` ペア）で `ProcessPoolExecutor.map`
+**クラス単位**（`(class_id, rows)` ペア）で `ProcessPoolExecutor.map`
 により並列化される。重いデータ（`id_to_bigrams`・閾値）は `initializer` で
 ワーカープロセスごとに 1 回だけ展開し、タスクあたりの pickle 量を抑える。
 
@@ -81,7 +80,7 @@ byte-identical（同点解消はすべて明示済み、frozenset → list 変�
 outputs/scam/approach/abstract/bigrams_level{L}_n{N}.pkl
 ```
 
-各戦略は `_common.load_id_to_bigrams_cached(config, level)` 経由でこの cache
+`mode_medoid.py` は `_common.load_id_to_bigrams_cached(config, level)` 経由でこの cache
 を読み、 abstract JSON を再パースしない（[BIGRAMS] cache hit のログを出す）。
 
 cache が `abstract_level{L}.json` より古い場合は自動的に abstract から
@@ -111,22 +110,22 @@ fallback 経路に倒れる（n-gram ロジックを変更したら版数を上�
 個別実行:
 ```bash
 uv run python experiments/scam/approach/Representative_value/mode_medoid.py \
-    --tau-dir jaccard07 --levels 0 --depths Diff
+    --tau-dir jaccard07 --levels 1 --depths Diff
 ```
 
-全戦略 × 全 tau × 全 level × 全 depth を一括実行:
+全 tau × 全 level × 全 depth を一括実行（パイプライン全体は `approach/run.sh`）:
 ```bash
-bash experiments/scam/approach/Representative_value/run.sh
+bash experiments/scam/approach/run.sh
 ```
 
 `run.sh` の主な環境変数:
 
 | 環境変数 | 既定 | 説明 |
 |---|---|---|
-| `TAU_DIRS` | `jaccard05 jaccard07 jaccard09` | 処理する tau ディレクトリ群 |
+| `TAU_DIRS` | `jaccard07 jaccard09` | 処理する tau ディレクトリ群 |
 | `LEVELS` | `1 2` | 抽象化レベル |
 | `DEPTHS` | `Diff Brother ExParent Parent` | depth 群 |
-| `WORKERS` | （未指定→`os.cpu_count()`）| 全戦略の `--workers` を一括指定 |
+| `WORKERS` | （未指定→`os.cpu_count()`）| `mode_medoid.py --workers` を一括指定 |
 
 例: 8 並列で jaccard07 level1 Diff のみ:
 ```bash

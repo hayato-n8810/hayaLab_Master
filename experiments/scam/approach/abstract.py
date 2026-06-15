@@ -212,7 +212,7 @@ def _abstract_cutout(cutout: dict[str, Any], level: int) -> dict[str, Any]:
 
     Args:
         cutout: ``{"diff_node_indices": [...], "nodes": [...]}``。
-        level: 抽象化レベル (0..3)。
+        level: 抽象化レベル (1 または 2)。
 
     Returns:
         抽象化済み cutout dict。``diff_node_indices`` は punctuation 除外後に
@@ -338,27 +338,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--server",
         action="store_true",
-        help=("server モード: 4 レベル × mb_id の全タスクを共有プールへ同時投入し 最大限並列化する（4 レベル分の結果を同時にメモリ保持）。大メモリ・多コア環境向け。"),
+        help=("server モード: 2 レベル × mb_id の全タスクを共有プールへ同時投入し 最大限並列化する（2 レベル分の結果を同時にメモリ保持）。大メモリ・多コア環境向け。"),
     )
     return parser.parse_args()
-
-
-def _run_level_sequential(records: list[dict[str, Any]], level: int, output_dir: Path) -> Path:
-    """1 レベルを逐次処理し、結果ファイルを書き出す。
-
-    Args:
-        records: 入力 mb_id レコード列。
-        level: 抽象化レベル (0..3)。
-        output_dir: 出力ディレクトリ。
-
-    Returns:
-        書き出した JSON のパス。
-    """
-    fn = LEVEL_FUNCTIONS[level]
-    results = [fn(r) for r in records]
-    output_path = output_dir / f"abstract_level{level}.json"
-    hayalab.write_json(str(output_path), results)
-    return output_path
 
 
 def _run_server(
@@ -367,16 +349,16 @@ def _run_server(
     output_dir: Path,
     workers: int,
 ) -> None:
-    """Server モード: 4 レベル × mb_id の全タスクを同時投入して最大限並列化する。
+    """Server モード: 2 レベル × mb_id の全タスクを同時投入して最大限並列化する。
 
     全レベル・全レコードの抽象化タスクを 1 つの共有 ProcessPoolExecutor へ一括で
     submit し、レベル境界で並列度が落ちるのを避けて CPU を常時フル稼働させる。
-    全 future の結果（4 レベル分）を完了まで同時にメモリ保持するため、大メモリ
+    全 future の結果（2 レベル分）を完了まで同時にメモリ保持するため、大メモリ
     環境を前提とする。書き出しはレベル昇順・id 昇順（submit 順）を維持する。
 
     Args:
         records: 入力 mb_id レコード列。
-        levels: 抽象化レベルのタプル (0..3)。
+        levels: 抽象化レベルのタプル (例 ``(1, 2)``)。
         output_dir: 出力ディレクトリ。
         workers: 並列ワーカー数。
     """
@@ -413,7 +395,9 @@ def main() -> None:
 
     if workers <= 1:
         for level in levels:
-            output_path = _run_level_sequential(records, level, output_dir)
+            results = [LEVEL_FUNCTIONS[level](r) for r in records]
+            output_path = output_dir / f"abstract_level{level}.json"
+            hayalab.write_json(str(output_path), results)
             print(f"[OUTPUT] {output_path}", flush=True)
         return
 
@@ -421,7 +405,7 @@ def main() -> None:
         _run_server(records, levels, output_dir, workers)
         return
 
-    # 入力 cutouts.json が巨大なため、4 レベル分の結果を同時にメモリ保持せず、
+    # 入力 cutouts.json が巨大なため、 2 レベル分の結果を同時にメモリ保持せず、
     # 1 レベルずつ mb_id 並列で処理して書き出す（ピークメモリを抑制）。
     # ProcessPoolExecutor はレベル間で再利用し、map で入力順（id 昇順）を保つ。
     with ProcessPoolExecutor(max_workers=workers) as pool:

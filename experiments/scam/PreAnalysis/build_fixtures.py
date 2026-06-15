@@ -1,13 +1,9 @@
 """フィクスチャビルダー（テスト補助スクリプト）。
 
-outputs/tmp/previous_ast.json を分解して
-tests/tmp/pattern_detection/fixtures/before/ に個別 JSON として保存する。
-
-NOTE: このスクリプトはテスト実行前に手動で一度だけ実行する。
-      BEFORE フィクスチャのみ生成する。AFTER フィクスチャはハードコード済み。
+outputs/tmp/previous_ast.json を分解して個別 JSON として保存する。
 
 Usage:
-    uv run python experiments/tmp/slow_pattern_detect/build_fixtures.py
+    uv run python experiments/scam/PreAnalysis/build_fixtures.py
 """
 
 from __future__ import annotations
