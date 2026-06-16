@@ -1,31 +1,32 @@
 """Stage 1: 全 MB について 4 粒度の AST 切り出しを行い、統合 JSON に保存する。
 
-入力: MBDiff JSON (`{"id": int, "diff": GumDiff JSON, ...}` のリスト)
-出力: `outputs/scam/approach/01_cutouts.json`
+入力: MBDiff JSON (``{"id": int, "diff": GumDiff JSON, ...}`` のリスト)
+出力: ``outputs/scam/approach/cutouts.json``
 
-切り出しロジックは `hayalab.gumtree.extract.cut_scope_*` を採用し、
-SCOPE_BOUNDARY は `hayalab.config.pattern_config.SCOPE_BOUNDARY` で統一する。
+切り出しロジックは ``hayalab.gumtree.extract.base_scope_*`` を採用し、
+SCOPE_BOUNDARY は ``hayalab.config.pattern_config.SCOPE_BOUNDARY`` で統一する。
 
-スキーマ:
+スキーマ::
+
     [
         {
-            "id": int,                           # MBDiff の id
+            "id": int,  # MBDiff の id
             "cutouts": {
-                "Diff":     {"diff_node_indices": [int,...], "nodes": [...]},
-                "Brother":  {"diff_node_indices": [int,...], "nodes": [...]},
-                "ExParent": {"diff_node_indices": [int,...], "nodes": [...]},
-                "Parent":   {"diff_node_indices": [int,...], "nodes": [...]}
-            }
+                "Diff": {"diff_node_indices": [int, ...], "nodes": [...]},
+                "Brother": {"diff_node_indices": [int, ...], "nodes": [...]},
+                "ExParent": {"diff_node_indices": [int, ...], "nodes": [...]},
+                "Parent": {"diff_node_indices": [int, ...], "nodes": [...]},
+            },
         },
-        ...
+        ...,
     ]
 
-ノード payload: {"origin_index", "begin", "end", "label", "name", "value", "parent"}
-`diff_node_indices` は各 scope の `nodes` の `origin_index` のうち `Diff` の merged に含まれるもの。
-Diff 自身では `Diff.nodes` 全体の `origin_index` 集合に等しい。
+ノード payload: ``{"origin_index", "begin", "end", "label", "name", "value", "parent"}``
+``diff_node_indices`` は各 scope の ``nodes`` の ``origin_index`` のうち
+Diff の merged に含まれるもの。
 
 実行例:
-    uv run python experiments/scam/approach/01_cutout.py --test
+    uv run python experiments/scam/approach/cutout.py --workers 8
 """
 
 from __future__ import annotations
@@ -63,9 +64,16 @@ def parse_args() -> argparse.Namespace:
 
 
 def _build_cutout_entry(nodes: list[dict[str, Any]], diff_origin_set: set[int]) -> dict[str, Any]:
-    """1 scope の merged.nodes から新スキーマ {diff_node_indices, nodes} を作る。
+    """1 scope の merged.nodes から新スキーマ ``{diff_node_indices, nodes}`` を作る。
 
-    diff_node_indices は `nodes` の origin_index のうち diff_origin_set に含まれるものを昇順で。
+    4 粒度（Diff / Brother / ExParent / Parent）それぞれで呼ばれる小さな組み立て。
+
+    Args:
+        nodes: 切り出された ``base_scope_*`` の merged ノード列。
+        diff_origin_set: Diff スコープに含まれる origin_index 集合。
+
+    Returns:
+        ``{"diff_node_indices": sorted({...} & diff_origin_set), "nodes": nodes}``。
     """
     in_scope_diff = sorted({n["origin_index"] for n in nodes} & diff_origin_set)
     return {"diff_node_indices": in_scope_diff, "nodes": nodes}
@@ -74,19 +82,15 @@ def _build_cutout_entry(nodes: list[dict[str, Any]], diff_origin_set: set[int]) 
 def _process_record(rec: dict[str, Any]) -> dict[str, Any]:
     """1 record (MBDiff の 1 要素) を処理して結果エントリを返す。
 
-    ProcessPoolExecutor のワーカーから呼ぶためトップレベル関数として定義する。
+    ProcessPoolExecutor の worker から呼ぶためトップレベル関数として定義する。
+    1 MB について 4 粒度の base scope を順次切り出し、 ``cutouts`` dict に集約する。
     """
     record_id = rec["id"]
     if rec.get("diff") is None:
         # diff が欠損しているレコードは cutouts を空にして id のみ保持する。
         return {"id": record_id, "cutouts": {}}
+
     gum_diff = GumDiff.model_validate(rec["diff"])
-    cutouts = build_cutouts_for_mb(gum_diff)
-    return {"id": record_id, "cutouts": cutouts}
-
-
-def build_cutouts_for_mb(gum_diff: GumDiff) -> dict[str, dict[str, Any]]:
-    """1 MB の 4 粒度 cutout (Diff/Brother/ExParent/Parent) を構築する。"""
     diff_result = base_scope_diff(gum_diff)
     brother_result = base_scope_brother(gum_diff)
     ex_parent_result = base_scope_block_exclude_parent(gum_diff, SCOPE_BOUNDARY)
@@ -96,10 +100,13 @@ def build_cutouts_for_mb(gum_diff: GumDiff) -> dict[str, dict[str, Any]]:
     diff_origin_set: set[int] = {n["origin_index"] for n in diff_nodes}
 
     return {
-        "Diff": _build_cutout_entry(diff_nodes, diff_origin_set),
-        "Brother": _build_cutout_entry(brother_result["merged"]["nodes"], diff_origin_set),
-        "ExParent": _build_cutout_entry(ex_parent_result["merged"]["nodes"], diff_origin_set),
-        "Parent": _build_cutout_entry(parent_result["merged"]["nodes"], diff_origin_set),
+        "id": record_id,
+        "cutouts": {
+            "Diff": _build_cutout_entry(diff_nodes, diff_origin_set),
+            "Brother": _build_cutout_entry(brother_result["merged"]["nodes"], diff_origin_set),
+            "ExParent": _build_cutout_entry(ex_parent_result["merged"]["nodes"], diff_origin_set),
+            "Parent": _build_cutout_entry(parent_result["merged"]["nodes"], diff_origin_set),
+        },
     }
 
 
@@ -124,7 +131,7 @@ def main() -> None:
         results: list[dict[str, Any]] = [_process_record(rec) for rec in records]
     else:
         print(f"[MODE] parallel (workers={workers})", flush=True)
-        # executor.map は入力順を保持するため、id 昇順の出力順序は維持される。
+        # executor.map は入力順を保持するため、 id 昇順の出力順序は維持される。
         with ProcessPoolExecutor(max_workers=workers) as executor:
             results = list(executor.map(_process_record, records, chunksize=16))
 

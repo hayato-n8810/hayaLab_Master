@@ -27,6 +27,7 @@ codeql/           ← CodeQL関連（クエリ・スクリプト・出力）
 | `hayalab.abst` | コード抽象化ユーティリティ |
 | `hayalab.config` | 設定値 |
 | `hayalab.utils` | 汎用ユーティリティ（ファイル I/O 等） |
+| `hayalab.scam` | SCAM2026 論文用の単体処理要素（ast_nav / diff_link / match / abstract / cluster / representative）。 実行エントリ・並列化・繋ぎは `experiments/scam/` 側 |
 
 ## Tech Stack
 

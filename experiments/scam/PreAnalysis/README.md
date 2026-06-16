@@ -80,11 +80,15 @@ uv run python experiments/scam/PreAnalysis/build_fixtures.py
 
 ## アーキテクチャ
 
-- `experiments/scam/PreAnalysis/ast_nav.py` — フラット AST ナビゲーションヘルパー（純関数）
-- `experiments/scam/PreAnalysis/slow_patterns/` — パターン別 matcher 群
-- `experiments/scam/PreAnalysis/diff_link.py` — Stage B diff 連動フィルタ
-- `experiments/scam/PreAnalysis/run.py` — 本スクリプト（I/O・パス決定）
+純粋ロジックは `src/hayalab/scam/` に集約済み:
 
-境界規約: 純粋ロジック（ast_nav / slow_patterns / diff_link）は I/O 禁止。
-パス決定・ファイル書き出しは `run.py` のみ担当。 Phase 2 で `hayalab/scam/`
-への移動を計画中。
+- `hayalab.scam.ast_nav` — フラット AST ナビゲーションヘルパー（純関数群）
+- `hayalab.scam.match.{base, p01..p10, apply}` — パターン別 matcher と部分木適用ロジック
+- `hayalab.scam.diff_link` — Stage B diff 連動フィルタ (``is_base_covered``, ``apply_diff_link``)
+
+experiments/scam/PreAnalysis/ 側:
+
+- `run.py` — CLI・I/O・パス決定。 hayalab の単体処理を組み合わせて全 MBDiff レコードを処理
+
+境界規約: 純粋ロジックは ``hayalab.scam.*`` に置き I/O を持たない。 並列化・パス決定・
+ファイル書き出しは ``run.py`` のみが担当する（agent-instructions.md の Boundary Rules）。

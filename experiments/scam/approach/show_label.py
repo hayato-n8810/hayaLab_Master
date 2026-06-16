@@ -24,19 +24,12 @@ from __future__ import annotations
 
 import argparse
 import re
-import sys
-from pathlib import Path
 from typing import Any
 
 import hayalab
 from hayalab.config import PathConfig
-
-# sibling import: 同じ approach/ 内の integrate.py から member_to_mb_id を共有する。
-_APPROACH_DIR = Path(__file__).resolve().parent
-if str(_APPROACH_DIR) not in sys.path:
-    sys.path.insert(0, str(_APPROACH_DIR))
-
-from integrate import DEPTHS, member_to_mb_id  # noqa: E402  -- sibling import 後
+from hayalab.scam.cluster.jaccard import member_to_mb_id
+from hayalab.scam.cluster.tokens import DEPTHS
 
 # 終端ノード判定: ``"name: value [...]"`` 形式の label にマッチ。
 _TERMINAL_LABEL_RE = re.compile(r"([^ ]+): (.+)")
@@ -50,7 +43,7 @@ def _labels_for_class(
     """1 クラスのメンバー列から ``{id, value}`` の列を作る。
 
     各メンバーの value は cutout の終端ノード（label が ``"name: value"`` 形式）の
-    value をスペース区切りで連結した文字列。
+    value をスペース区切りで連結した文字列。 クラスごとに繰り返し呼ばれる。
 
     Args:
         members: ``"{id}_{depth}"`` 形式の cutout_id リスト。
@@ -71,25 +64,6 @@ def _labels_for_class(
             value = ""
         rows.append({"id": mb_id, "value": value})
     return rows
-
-
-def build_class_labels(
-    cluster: dict[str, Any],
-    depth: str,
-    id_to_cutouts: dict[int, dict[str, Any]],
-) -> dict[str, list[dict[str, Any]]]:
-    """クラスタ結果 1 ファイル分から ``{class_id: [{id, value}, ...]}`` を作る。
-
-    Args:
-        cluster: integrate 出力 (``{"meta": ..., "classes": {...}}``)。
-        depth: 対象 depth。
-        id_to_cutouts: mb_id → cutouts のマップ。
-
-    Returns:
-        クラスごとの ``{id, value}`` 列辞書。クラスの順序は入力を保つ。
-    """
-    classes: dict[str, list[str]] = cluster.get("classes", {})
-    return {class_id: _labels_for_class(members, depth, id_to_cutouts) for class_id, members in classes.items()}
 
 
 def parse_args() -> argparse.Namespace:
@@ -126,7 +100,7 @@ def main() -> None:
             print(f"[SKIP] abstract not found: {abstract_path}", flush=True)
             continue
         print(f"[ABSTRACT] {abstract_path}", flush=True)
-        # level ファイルは 1 回だけ読み、4 depth で使い回す（巨大ファイルの再読込回避）。
+        # level ファイルは 1 回だけ読み、 4 depth で使い回す（巨大ファイルの再読込回避）。
         records = hayalab.read_json(str(abstract_path))
         id_to_cutouts: dict[int, dict[str, Any]] = {entry["id"]: entry["cutouts"] for entry in records}
 
@@ -136,7 +110,8 @@ def main() -> None:
                 print(f"[SKIP] cluster not found: {cluster_path}", flush=True)
                 continue
             cluster = hayalab.read_json(str(cluster_path))
-            class_labels = build_class_labels(cluster, depth, id_to_cutouts)
+            classes: dict[str, list[str]] = cluster.get("classes", {})
+            class_labels = {class_id: _labels_for_class(members, depth, id_to_cutouts) for class_id, members in classes.items()}
 
             out_path = integrate_dir / f"level{level}" / f"{depth}" / f"{depth}_label.json"
             out_path.parent.mkdir(parents=True, exist_ok=True)

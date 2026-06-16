@@ -4,8 +4,10 @@
 「このクラスのパターンはこれ」と人間に説明するための**代表 value**を抽出するスクリプト群。
 
 論文採用は `mode_medoid.py`（過半数 mode → bigram-Jaccard medoid の二段構え）のみ。
-共通処理（bigram トークン化、Jaccard、IO）は `_common.py` に集約しており、
-bigram の定義は `integrate.py` と完全に同一（クラスタ生成と整合）。
+代表選択ロジック (``representative_for_class``) は ``hayalab.scam.representative`` に
+切り出されており、 `mode_medoid.py` は CLI / 並列化 / I/O だけを担う。
+bigram トークン化・Jaccard は ``hayalab.scam.cluster.{tokens, jaccard}`` 側に集約済み。
+共通 I/O ヘルパー（パス解決・cache 読み込み）は `_common.py` に残る。
 
 ## 入力
 

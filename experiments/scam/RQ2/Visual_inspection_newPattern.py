@@ -1,7 +1,7 @@
 """新パターン候補クラスタの目視調査用 CSV を生成する。
 
 概要:
-    outputs/scam/approach/integrate/jaccard07/level{0,1}/{Diff,Brother}
+    outputs/scam/approach/integrate/jaccard07/level{1,2}/{Diff,Brother}
     の 4 ディレクトリのクラスタから、既知 7 パターン (PreAnalysis/matches.jsonl の mb_id) を
     含まないクラスタを抽出し、size 降順上位 TOP_K 件を新規パターン候補とする。
 
@@ -24,7 +24,6 @@ from __future__ import annotations
 import csv
 import json
 import shutil
-import sys
 from difflib import unified_diff
 from pathlib import Path
 from typing import Any
@@ -32,13 +31,7 @@ from typing import Any
 import ijson
 
 from hayalab.config import PathConfig
-
-# sibling import: 同じ scam/approach/ 内の integrate.py から jaccard を共有する。
-_APPROACH_DIR = Path(__file__).resolve().parents[1] / "approach"
-if str(_APPROACH_DIR) not in sys.path:
-    sys.path.insert(0, str(_APPROACH_DIR))
-
-from integrate import jaccard  # noqa: E402  -- sibling import 後
+from hayalab.scam.cluster.jaccard import jaccard
 
 
 def extract_added_removed(base_code: str, head_code: str) -> tuple[str, str]:

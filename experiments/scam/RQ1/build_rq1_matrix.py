@@ -9,7 +9,7 @@ G_p で選ぶ、という二重のオラクル（リーク）を含む。本ス�
 同定方式は 2 つ用意する（既定は matcher）:
   - matcher（既定）: クラスタ代表値の元 cut（部分木）に，事前分析と同一の matcher を
     検出ロジック無改変で適用し，変更前構造が cut に存在するかで同定する
-    （identify_matcher.py）。AST 構造を用いるため字句近似より厳密。
+    （``hayalab.scam.match.apply``）。AST 構造を用いるため字句近似より厳密。
   - lexical: 代表値（抽象化後トークン列）に対する署名述語 pi_predicate で同定する近似版。
     比較用に残す。
 
@@ -25,7 +25,7 @@ Precision は補助指標（G_p が下限のため純度として解釈しない
   - outputs/scam/PreAnalysis/matches.jsonl                 G_p (diff_linked=True)
   - outputs/scam/approach/cutouts.json             各 pair の depth 別 cut（matcher 同定用）
   - outputs/scam/approach/integrate/
-        jaccard{07,09}/level{0,1}/{Diff,Brother,Parent,ExParent}/
+        jaccard{07,09}/level{1,2}/{Diff,Brother,Parent,ExParent}/
           {depth}.json                       classes: class_id -> [ "{id}_{depth}" ]
           {depth}_pattern_mode_medoid.json    classes: class_id -> {representative:{id,value}}
 
@@ -42,10 +42,11 @@ import csv
 import json
 import os
 from collections import defaultdict
-from pathlib import Path
 
 import ijson
-from identify_matcher import match_patterns_on_cut
+
+from hayalab.config import PathConfig
+from hayalab.scam.match.apply import match_patterns_on_cut
 
 # ---------------------------------------------------------------------------
 # パス設定
@@ -53,11 +54,11 @@ from identify_matcher import match_patterns_on_cut
 #     RQ1_INTEGRATE=outputs/scam/approach/integrate （integrate 出力ディレクトリ）
 #     RQ1_OUT=outputs/scam/RQ1                       （出力先）
 # ---------------------------------------------------------------------------
-ROOT = Path(__file__).resolve().parents[3]
-PRE_MATCHES = ROOT / "outputs/scam/PreAnalysis/matches.jsonl"
-INTEGRATE = Path(os.environ.get("RQ1_INTEGRATE", str(ROOT / "outputs/scam/approach/integrate")))
-CUTOUTS = ROOT / "outputs/scam/approach/cutouts.json"
-OUT_DIR = Path(os.environ.get("RQ1_OUT", str(ROOT / "outputs/scam/RQ1")))
+path_config = PathConfig()
+PRE_MATCHES = path_config.outputs / "scam" / "PreAnalysis" / "matches.jsonl"
+INTEGRATE = path_config.outputs / "scam" / "approach" / "integrate"
+CUTOUTS = path_config.outputs / "scam" / "approach" / "cutouts.json"
+OUT_DIR = path_config.outputs / "scam" / "RQ1" / "test"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 # ---------------------------------------------------------------------------
 # 設定軸の定義

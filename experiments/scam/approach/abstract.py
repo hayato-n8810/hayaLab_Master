@@ -1,31 +1,21 @@
 """Stage 3: 抽象化レベル L1–L2 を cutouts.json に適用する (approach)。
 
-``docs/abstract.md`` で確定した 3 段階累積階層 (L1/L2) を mb_id 単位で
+``docs/abstract.md`` で確定した 2 段階累積階層 (L1/L2) を mb_id 単位で
 各 cutout に適用し、レベル別に JSON ファイルとして書き出す。設計の背景・
 関連研究との対応は ``docs/abstraction_design.md`` を参照。
 
 Levels:
-    L1 (Skeleton):     identifier 値 (VAR_/FUNCTION_) を slot 化。
-    L2 (Standard):     L1 + literal 値 (number / string_fragment) を slot 化。
-                       さらに ``regex`` ノード配下（regex ノードの origin_index
-                       を parent に含む全ノード）の値を ``$r0`` 形式の slot に
-                       置換する（削除はしない）。
+    L1 (Skeleton):  identifier 値 (VAR_/FUNCTION_) を slot 化。
+    L2 (Standard):  L1 + literal 値 (number / string_fragment) を slot 化。
+                    さらに ``regex`` ノード配下（regex ノードの origin_index
+                    を parent に含む全ノード）の値を ``$r0`` 形式の slot に
+                    置換する（削除はしない）。
 
 paper (SCAM2026) における位置付け:
     本研究の確定方針 (paper §6.3.1) は「**抽象化 (Type-2 段階)
     × 類似度 (Type-3 相当の τ) の 2 軸で粒度を制御する**」設計を採用する。
     メイン分析は **L1 / L2 のみ** を用い、 Type-3 相当の柔軟性は τ 軸
-    (integrate.py の ``--taus``) で吸収する。 文献的には Roy survey の
-    Type-2 / SourcererCC (Sajnani 2016) の overlap threshold の系譜に対応。
-
-
-演算子・キーワード (``===``, ``!==``, ``==``, ``%`` 等) は全レベルで保持する。
-Punctuation (``(``, ``)``, ``,``, ``.`` 等) は文献的標準に従い抽象化結果から
-除外する。それ以外のサブツリー削除は採用しない（``docs/abstract.md`` §2.2）。
-
-``variadic`` フラグは ``formal_parameters`` の直接子 (``parent[-1]`` が
-``formal_parameters`` の ``origin_index``) にのみ立てる。抽象化レベルに依存せず
-L1 から true となる（``docs/abstract.md`` §3 variadic フラグ）。
+    (integrate.py の ``--taus``) で吸収する。
 
 Input:
     outputs/scam/approach/cutouts.json
@@ -40,337 +30,40 @@ Example:
 from __future__ import annotations
 
 import argparse
+from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any
 
 import hayalab
 from hayalab.config import PathConfig
+from hayalab.scam.abstract import abstract_level1, abstract_level2
 
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
-
-# Cutout の depth 順序（出力スキーマ安定化のため保持）。
-DEPTHS: tuple[str, ...] = ("Diff", "Brother", "ExParent", "Parent")
-
-# 抽象化結果から除外する汎用記号集合
-PUNCTUATION_NAMES: frozenset[str] = frozenset(["(", ")", ",", ".", ";", "{", "}", "[", "]", ":", '"', "'", "_"])
-
-# 入力 ``01_cutouts.json`` の前処理 (``hayalab.abst``) で割り当てられる
-# identifier prefix → slot family marker の対応。
-IDENTIFIER_PREFIXES: tuple[tuple[str, str], ...] = (
-    ("VAR_", "v"),
-    ("FUNCTION_", "f"),
-)
-
-# L1 でリテラル抽象化対象となる tree-sitter ノード名。
-LITERAL_NUMBER_NAME: str = "number"
-LITERAL_STRING_FRAGMENT_NAME: str = "string_fragment"
-
-# L1 で regex 配下抽象化のトリガーとなる tree-sitter ノード名。
-REGEX_NODE_NAME: str = "regex"
-
-
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
-
-
-def _is_punctuation(node: dict[str, Any]) -> bool:
-    """Punctuation ノードか判定する。
-
-    Args:
-        node: 入力ノード dict (``name`` / ``value`` を含む)。
-
-    Returns:
-        ``name`` または ``value`` が :data:`PUNCTUATION_NAMES` に含まれる場合 True。
-    """
-    return node["name"].strip() in PUNCTUATION_NAMES or node["value"].strip() in PUNCTUATION_NAMES
-
-
-def _match_identifier_prefix(value: str) -> Optional[tuple[str, str]]:
-    """Identifier prefix にマッチした場合 ``(prefix, marker)`` を返す。
-
-    Args:
-        value: ノードの ``value`` 文字列。
-
-    Returns:
-        例: ``"VAR_3"`` → ``("VAR_", "v")``。マッチしなければ ``None``。
-    """
-    for prefix, marker in IDENTIFIER_PREFIXES:
-        if value.startswith(prefix):
-            return prefix, marker
-    return None
-
-
-def _allocate_slot(slot_map: dict[str, str], key: str, marker: str) -> str:
-    """Slot ID を割り当てる（同一 key は同一 slot を再利用）。
-
-    Args:
-        slot_map: 同一 cutout 内で共有する mutable な slot 割当辞書。
-        key: 元値（cache キー）。
-        marker: slot family を示す 1 文字 (``v`` / ``f`` / ``n`` / ``s`` / ``r``)。
-
-    Returns:
-        ``$v0`` / ``$n1`` 等の slot ID。
-    """
-    if key in slot_map:
-        return slot_map[key]
-    count = sum(1 for v in slot_map.values() if v.startswith(f"${marker}"))
-    slot_id = f"${marker}{count}"
-    slot_map[key] = slot_id
-    return slot_id
-
-
-def _abstract_node(
-    node: dict[str, Any],
-    level: int,
-    slot_map: dict[str, str],
-    in_regex: bool = False,
-    is_formal_parameter_child: bool = False,
-) -> dict[str, Any]:
-    """1 ノードに ``level`` に応じた累積抽象化を適用する。
-
-    累積階層の意味通り L1 → L2 の順に変換を重ねる。各レベルの判定は
-    すべて関数冒頭で capture した ``original_name`` / ``original_value`` を参照
-    するため、後段レベルが前段レベルの mutate 結果に影響されることはない。
-
-    Args:
-        node: 入力ノード dict (``01_cutouts.json`` スキーマ)。
-        level: 抽象化レベル (1,2)。
-        slot_map: 同一 cutout 内で共有する slot 割当辞書。
-        in_regex: ``regex`` ノードの子孫（``parent`` に regex ノードの
-            ``origin_index`` を含む）であれば True。L1 以降で regex slot
-            ``$r*`` に置換するためのフラグ。
-        is_formal_parameter_child: ``formal_parameters`` ノードの直接子
-            （``parent[-1]`` が ``formal_parameters`` の ``origin_index``）で
-            あれば True。``variadic`` フラグ値として直接反映される
-            (``docs/abstract.md`` §3 variadic フラグ)。
-
-    Returns:
-        抽象化済みノード dict。元の schema (``origin_index`` / ``begin`` /
-        ``end`` / ``label`` / ``name`` / ``value`` / ``parent``) に
-        ``slot_id`` と ``variadic`` を追加する。
-    """
-    original_name = node["name"]
-    original_value = node["value"]
-
-    # 出力フィールド初期値: 抽象化されなければ元の name/value をそのまま返す。
-    name = original_name
-    value: str = original_value
-    slot_id: Optional[str] = None
-    # variadic は grammar-level の構造的性質として formal_parameters の直接子に限定して true にする。抽象化レベルには依存しない (L1 から立つ)。
-    variadic = is_formal_parameter_child
-
-    # ---- L1: identifier 値の slot 化 -------------------------------------
-    # 前処理出力の VAR_*/FUNCTION_* を cutout 内で ``$v0`` / ``$f0`` 形式に
-    # 再採番する。
-    prefix_match = _match_identifier_prefix(original_value)
-    if prefix_match is not None:
-        marker = prefix_match[1]
-        slot_id = _allocate_slot(slot_map, original_value, marker)
-        value = slot_id
-
-    # ---- L2: リテラル値の slot 化 ----------------------------------------
-    # number / string_fragment / regex 子孫を ``$n*`` / ``$s*`` / ``$r*`` に
-    # 置換する。regex 子孫判定は具体ノード種別より優先する。
-    if level >= 2:
-        if in_regex:
-            slot_id = _allocate_slot(slot_map, f"REGEX::{original_value}", "r")
-            value = slot_id
-        elif original_name == LITERAL_NUMBER_NAME:
-            slot_id = _allocate_slot(slot_map, f"NUMBER::{original_value}", "n")
-            value = slot_id
-        elif original_name == LITERAL_STRING_FRAGMENT_NAME:
-            slot_id = _allocate_slot(slot_map, f"STRING::{original_value}", "s")
-            value = slot_id
-
-    return {
-        "origin_index": node["origin_index"],
-        "begin": node["begin"],
-        "end": node["end"],
-        "label": node["label"],
-        "name": name,
-        "value": value,
-        "parent": list(node["parent"]),
-        "slot_id": slot_id,
-        "variadic": variadic,
-    }
-
-
-def _abstract_cutout(cutout: dict[str, Any], level: int) -> dict[str, Any]:
-    """Cutout 単位で抽象化を適用する。punctuation ノードは除外する。
-
-    cutout 内の ``regex`` ノードと ``formal_parameters`` ノードの
-    ``origin_index`` 集合を事前計算し、各ノードに対して:
-
-    * 子孫が regex の場合 → L2 で regex slot 化
-    * 直接の親が ``formal_parameters`` の場合 → ``variadic = true``
-
-    を判定するための情報を :func:`_abstract_node` に渡す。
-
-    Args:
-        cutout: ``{"diff_node_indices": [...], "nodes": [...]}``。
-        level: 抽象化レベル (1 または 2)。
-
-    Returns:
-        抽象化済み cutout dict。``diff_node_indices`` は punctuation 除外後に
-        残った ``origin_index`` のみで再構成する。
-    """
-    slot_map: dict[str, str] = {}
-    abstracted_nodes: list[dict[str, Any]] = []
-
-    # regex ノードの origin_index 集合（regex 自身は子孫ではないため除外される）。
-    regex_origin_indices: set[int] = {n["origin_index"] for n in cutout["nodes"] if n["name"] == REGEX_NODE_NAME}
-
-    for node in cutout["nodes"]:
-        if _is_punctuation(node):
-            continue
-        in_regex = bool(regex_origin_indices.intersection(node["parent"]))
-        abstracted_nodes.append(
-            _abstract_node(
-                node,
-                level,
-                slot_map,
-                in_regex,
-            )
-        )
-
-    remaining_origin = {n["origin_index"] for n in abstracted_nodes}
-    diff_indices = [i for i in cutout["diff_node_indices"] if i in remaining_origin]
-
-    return {
-        "diff_node_indices": diff_indices,
-        "nodes": abstracted_nodes,
-    }
-
-
-def _abstract_record(record: dict[str, Any], level: int) -> dict[str, Any]:
-    """1 mb_id レコードを抽象化する（``abstract_levelN`` の共通実装）。
-
-    Args:
-        record: ``{"id": int, "cutouts": {depth: {...}}}``。
-        level: 抽象化レベル (1,2)。
-
-    Returns:
-        抽象化済みレコード。
-    """
-    return {
-        "id": record["id"],
-        "cutouts": {depth: _abstract_cutout(cutout, level) for depth, cutout in record["cutouts"].items()},
-    }
-
-
-# ---------------------------------------------------------------------------
-# Public level functions (each implemented as a single function per spec)
-# ---------------------------------------------------------------------------
-
-
-def abstract_level1(record: dict[str, Any]) -> dict[str, Any]:
-    """L1 (Skeleton): identifier 値のみを cutout 内で slot 化する。
-
-    前処理で割り当てられた ``VAR_*`` / ``FUNCTION_*`` を cutout 内で一貫した
-    ``$v1`` / ``$f1`` 形式の slot ID に再採番する。リテラル・API 名・演算子・
-    非終端は全て保持する。
-
-    Args:
-        record: 1 mb_id 分の cutout 集合 (``{"id", "cutouts"}``)。
-
-    Returns:
-        L1 抽象化済みレコード。
-    """
-    return _abstract_record(record, 1)
-
-
-def abstract_level2(record: dict[str, Any]) -> dict[str, Any]:
-    """L2 (Standard): L1 + リテラル値の slot 化（regex 子孫含む）。
-
-    ``number`` / ``string_fragment`` ノードの値を ``$n0`` / ``$s0`` 形式の
-    slot ID に置換する。さらに ``regex`` ノードの ``origin_index`` を
-    ``parent`` に含む全ノード（regex 子孫）の値を ``$r0`` 形式の slot ID に
-    置換する。regex 子孫は**削除せず slot 化**する方針 (``docs/abstract.md``
-    §2.2)。Tiarks Type-2.3 を regex リテラルへ拡張した形となる。
-
-    Args:
-        record: 1 mb_id 分の cutout 集合 (``{"id", "cutouts"}``)。
-
-    Returns:
-        L2 抽象化済みレコード。
-    """
-    return _abstract_record(record, 2)
-
-
-# 抽象化レベル → トップレベル関数の対応表。ProcessPoolExecutor で pickling
-# する都合上、モジュールトップに置いた純関数を参照する。
+# 抽象化レベル → トップレベル関数の対応表。 ProcessPoolExecutor の pickle 用に
+# experiments トップレベルで再定義する（hayalab 側から import した純関数を値に持つ）。
 LEVEL_FUNCTIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {
     1: abstract_level1,
     2: abstract_level2,
 }
 
 
-# ---------------------------------------------------------------------------
-# CLI / main
-# ---------------------------------------------------------------------------
-
-
 def parse_args() -> argparse.Namespace:
     """CLI 引数を解析する。"""
     parser = argparse.ArgumentParser(description="Stage 3: abstraction L1–L2 (mb_id 並列)")
-    parser.add_argument(
-        "--input",
-        type=Path,
-        default=None,
-        help="入力 cutouts.json のパス (省略時はデフォルトパス)",
-    )
-    parser.add_argument(
-        "--output-dir",
-        type=Path,
-        default=None,
-        help="出力ディレクトリ (省略時は outputs/scam/approach/abstract/)",
-    )
+    parser.add_argument("--input", type=Path, default=None, help="cutouts.json のパス")
+    parser.add_argument("--output-dir", type=Path, default=None, help="abstract_level{L}.json 出力先")
     parser.add_argument(
         "--workers",
         type=int,
-        default=4,
+        default=1,
         help="並列化数 (mb_id 単位で並列処理)。1 以下で逐次処理。",
     )
     parser.add_argument(
         "--server",
         action="store_true",
-        help=("server モード: 2 レベル × mb_id の全タスクを共有プールへ同時投入し 最大限並列化する（2 レベル分の結果を同時にメモリ保持）。大メモリ・多コア環境向け。"),
+        help="server モード: 2 レベル × mb_id の全タスクを共有プールへ同時投入し最大限並列化する。",
     )
     return parser.parse_args()
-
-
-def _run_server(
-    records: list[dict[str, Any]],
-    levels: tuple[int, ...],
-    output_dir: Path,
-    workers: int,
-) -> None:
-    """Server モード: 2 レベル × mb_id の全タスクを同時投入して最大限並列化する。
-
-    全レベル・全レコードの抽象化タスクを 1 つの共有 ProcessPoolExecutor へ一括で
-    submit し、レベル境界で並列度が落ちるのを避けて CPU を常時フル稼働させる。
-    全 future の結果（2 レベル分）を完了まで同時にメモリ保持するため、大メモリ
-    環境を前提とする。書き出しはレベル昇順・id 昇順（submit 順）を維持する。
-
-    Args:
-        records: 入力 mb_id レコード列。
-        levels: 抽象化レベルのタプル (例 ``(1, 2)``)。
-        output_dir: 出力ディレクトリ。
-        workers: 並列ワーカー数。
-    """
-    print("[MODE] server (全レベル同時投入・結果メモリ保持)", flush=True)
-    with ProcessPoolExecutor(max_workers=workers) as pool:
-        # レベル昇順・records 順に submit するため、各 future リストは入力順を保つ。
-        futures_per_level: dict[int, list] = {level: [pool.submit(LEVEL_FUNCTIONS[level], record) for record in records] for level in levels}
-        for level in levels:
-            results = [f.result() for f in futures_per_level[level]]
-            output_path = output_dir / f"abstract_level{level}.json"
-            hayalab.write_json(str(output_path), results)
-            print(f"[OUTPUT] {output_path} ({len(results)} records)", flush=True)
 
 
 def main() -> None:
@@ -393,6 +86,7 @@ def main() -> None:
     levels: tuple[int, ...] = (1, 2)
     print(f"[WORKERS] {workers} (mb_id 並列)", flush=True)
 
+    # 逐次: workers <= 1
     if workers <= 1:
         for level in levels:
             results = [LEVEL_FUNCTIONS[level](r) for r in records]
@@ -401,13 +95,20 @@ def main() -> None:
             print(f"[OUTPUT] {output_path}", flush=True)
         return
 
+    # server モード: 全レベル × 全レコードを 1 プールに同時投入（大メモリ・多コア向け）
     if args.server:
-        _run_server(records, levels, output_dir, workers)
+        print("[MODE] server (全レベル同時投入・結果メモリ保持)", flush=True)
+        with ProcessPoolExecutor(max_workers=workers) as pool:
+            futures_per_level: dict[int, list] = {level: [pool.submit(LEVEL_FUNCTIONS[level], record) for record in records] for level in levels}
+            for level in levels:
+                results = [f.result() for f in futures_per_level[level]]
+                output_path = output_dir / f"abstract_level{level}.json"
+                hayalab.write_json(str(output_path), results)
+                print(f"[OUTPUT] {output_path} ({len(results)} records)", flush=True)
         return
 
-    # 入力 cutouts.json が巨大なため、 2 レベル分の結果を同時にメモリ保持せず、
-    # 1 レベルずつ mb_id 並列で処理して書き出す（ピークメモリを抑制）。
-    # ProcessPoolExecutor はレベル間で再利用し、map で入力順（id 昇順）を保つ。
+    # 通常モード: 1 レベルずつ mb_id 並列で処理し、ピークメモリを抑制する。
+    # ProcessPoolExecutor はレベル間で再利用し、 map で入力順（id 昇順）を保つ。
     with ProcessPoolExecutor(max_workers=workers) as pool:
         for level in levels:
             results = list(pool.map(LEVEL_FUNCTIONS[level], records, chunksize=16))

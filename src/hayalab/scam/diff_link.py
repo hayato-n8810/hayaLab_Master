@@ -39,7 +39,7 @@ from .ast_nav import (
     is_number_literal,
     named_children,
 )
-from .slow_patterns.base import PatternMatch
+from .match.base import PatternMatch
 
 # ---------------------------------------------------------------------------
 # 定数: pattern_id → head 側に期待される after ノードの name

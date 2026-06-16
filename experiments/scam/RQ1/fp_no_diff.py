@@ -23,7 +23,6 @@ r"""限界L2の定量化: c_p 同定クラスタの非 G_p 要素に占める no
 from __future__ import annotations
 
 import csv
-from typing import Any
 
 from build_rq1_matrix import (
     ALPHAS,
@@ -52,28 +51,16 @@ CSV_FIELDS = [
 ]
 
 
-# ---------------------------------------------------------------------------
-# Pure logic
-# ---------------------------------------------------------------------------
+def main() -> None:
+    """全 16 設計条件で FP 中の no_diff_linked 比率を算出し CSV 出力する。"""
+    gp = load_ground_truth()
+    no_diff = load_no_diff_linked()
 
+    print("building matcher identification cache (one pass over cutouts.json) ...")
+    cache = build_match_cache(collect_rep_ids_per_depth())
 
-def compute_fp_no_diff_rows(
-    gp: dict[int, set[int]],
-    no_diff: dict[int, set[int]],
-    cache: dict[tuple[int, str], frozenset[int]],
-) -> list[dict[str, Any]]:
-    """全16設計条件 × 全パターンの FP / FP∩noDiff 内訳を算出する。
-
-    Args:
-        gp: ``{pattern_id: G_p（mb_id 集合）}``。
-        no_diff: ``{pattern_id: no_diff_linked（mb_id 集合）}``。
-        cache: matcher 同定キャッシュ。 ``{(rep_id, depth): frozenset(pattern_ids)}``。
-
-    Returns:
-        ``CSV_FIELDS`` をキーに持つ行 dict のリスト。
-        書き込み順は ``TAUS × ALPHAS × SIGMAS × TARGET_PATTERNS`` の lexicographic。
-    """
-    rows: list[dict[str, Any]] = []
+    # 全 (tau, alpha, sigma, pattern) の FP / FP∩noDiff を集計
+    rows: list[dict] = []
     for tau_dir, _ in TAUS:
         for level_dir, _ in ALPHAS:
             for depth, _ in SIGMAS:
@@ -104,28 +91,6 @@ def compute_fp_no_diff_rows(
                         }
                     )
                 print(f"done: {tau_dir}/{level_dir}/{depth}")
-    return rows
-
-
-def format_summary(rows: list[dict[str, Any]], tau: str = "jaccard07", alpha: str = "level1") -> str:
-    """指定 (τ, α) サブセットを表形式テキストに整形する。"""
-    lines = [f"\n=== FP 中の no_diff_linked 比率 (τ={tau}, α={alpha}) ==="]
-    lines.append("sigma     P  | |Gp| | |C| |  tp |  FP | FP∩noDiff | ratio")
-    for r in rows:
-        if r["tau"] == tau and r["alpha"] == alpha:
-            lines.append(f"{r['sigma']:9} {r['pattern_id']:>2} | {r['Gp_size']:>3} | {r['C_size']:>4} | {r['tp']:>3} | {r['fp']:>4} | {r['fp_no_diff']:>8} | {r['fp_no_diff_ratio']}")
-    return "\n".join(lines)
-
-
-def main() -> None:
-    """全16設計条件で FP 中の no_diff_linked 比率を算出し CSV 出力する。"""
-    gp = load_ground_truth()
-    no_diff = load_no_diff_linked()
-
-    print("building matcher identification cache (one pass over cutouts.json) ...")
-    cache = build_match_cache(collect_rep_ids_per_depth())
-
-    rows = compute_fp_no_diff_rows(gp, no_diff, cache)
 
     out = OUT_DIR / "fp_no_diff.csv"
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -134,7 +99,13 @@ def main() -> None:
         w.writeheader()
         w.writerows(rows)
     print("wrote", out)
-    print(format_summary(rows))
+
+    # 標準出力: τ=0.7, α=level1 の要約
+    print("\n=== FP 中の no_diff_linked 比率 (τ=jaccard07, α=level1) ===")
+    print("sigma     P  | |Gp| | |C| |  tp |  FP | FP∩noDiff | ratio")
+    for r in rows:
+        if r["tau"] == "jaccard07" and r["alpha"] == "level1":
+            print(f"{r['sigma']:9} {r['pattern_id']:>2} | {r['Gp_size']:>3} | {r['C_size']:>4} | {r['tp']:>3} | {r['fp']:>4} | {r['fp_no_diff']:>8} | {r['fp_no_diff_ratio']}")
 
 
 if __name__ == "__main__":

@@ -19,15 +19,14 @@ from __future__ import annotations
 
 import csv
 import statistics
-from collections.abc import Iterable
-from pathlib import Path
-from typing import Any
 
 import ijson
 
-ROOT = Path(__file__).resolve().parents[3]
-CUTOUTS = ROOT / "outputs/scam/approach/cutouts.json"
-OUT_DIR = ROOT / "outputs/scam/RQ1"
+from hayalab.config import PathConfig
+
+path_config = PathConfig()
+CUTOUTS = path_config.outputs / "scam" / "approach" / "cutouts.json"
+OUT_DIR = path_config.outputs / "scam" / "RQ1"
 
 DEPTHS = ["Diff", "Brother", "ExParent", "Parent"]
 SIGMA_LABEL = {"Diff": "sigma1", "Brother": "sigma2", "ExParent": "sigma3", "Parent": "sigma4"}
@@ -47,66 +46,48 @@ CSV_FIELDS = [
 ]
 
 
-# ---------------------------------------------------------------------------
-# Pure logic
-# ---------------------------------------------------------------------------
-
-
-def compute_scope_noise(
-    pairs: Iterable[dict[str, Any]],
-    depths: list[str] = DEPTHS,
-    punct: set[str] = PUNCT,
-    log_every: int = 5000,
-) -> list[dict[str, Any]]:
-    """各 σ（depth）の非差分ノード比率を集計し、行リストを返す。
-
-    Args:
-        pairs: 各実装対の dict（``cutouts`` キーを持つ）の iterable。
-        depths: 対象 depth の順序。
-        punct: named 集計から除外する句読点ノード名集合。
-        log_every: 進捗ログの頻度（0 でログ無効化）。
-
-    Returns:
-        各 depth に対応する行 dict のリスト。 キーは ``CSV_FIELDS`` と一致。
-    """
-    cut_sizes: dict[str, list[int]] = {d: [] for d in depths}
-    diff_sizes: dict[str, list[int]] = {d: [] for d in depths}
-    ratios_all: dict[str, list[float]] = {d: [] for d in depths}
-    ratios_named: dict[str, list[float]] = {d: [] for d in depths}
+def main() -> None:
+    """cutouts.json を 1 パス走査し、 σ 別の非差分ノード比率を集計して CSV 出力する。"""
+    # depth ごとの集計バケット
+    cut_sizes: dict[str, list[int]] = {d: [] for d in DEPTHS}
+    diff_sizes: dict[str, list[int]] = {d: [] for d in DEPTHS}
+    ratios_all: dict[str, list[float]] = {d: [] for d in DEPTHS}
+    ratios_named: dict[str, list[float]] = {d: [] for d in DEPTHS}
 
     n = 0
-    for it in pairs:
-        cuts = it.get("cutouts", {})
-        for depth in depths:
-            cut = cuts.get(depth)
-            if not cut:
-                continue
-            nodes = cut.get("nodes", [])
-            if not nodes:
-                continue
-            diff_idx = set(cut.get("diff_node_indices", []))
+    with CUTOUTS.open("rb") as f:
+        for it in ijson.items(f, "item"):
+            cuts = it.get("cutouts", {})
+            for depth in DEPTHS:
+                cut = cuts.get(depth)
+                if not cut:
+                    continue
+                nodes = cut.get("nodes", [])
+                if not nodes:
+                    continue
+                diff_idx = set(cut.get("diff_node_indices", []))
 
-            # 全ノード基準
-            origin = [nd["origin_index"] for nd in nodes]
-            total = len(origin)
-            non_diff = sum(1 for oi in origin if oi not in diff_idx)
-            cut_sizes[depth].append(total)
-            diff_sizes[depth].append(len(diff_idx))
-            ratios_all[depth].append(non_diff / total)
+                # 全ノード基準
+                origin = [nd["origin_index"] for nd in nodes]
+                total = len(origin)
+                non_diff = sum(1 for oi in origin if oi not in diff_idx)
+                cut_sizes[depth].append(total)
+                diff_sizes[depth].append(len(diff_idx))
+                ratios_all[depth].append(non_diff / total)
 
-            # named ノード基準（句読点を除外）
-            named = [nd["origin_index"] for nd in nodes if nd.get("name") not in punct]
-            if named:
-                nd_non_diff = sum(1 for oi in named if oi not in diff_idx)
-                ratios_named[depth].append(nd_non_diff / len(named))
-        n += 1
-        if log_every and n % log_every == 0:
-            print(f"  scanned {n} pairs")
-    if log_every:
-        print(f"scanned {n} pairs total")
+                # named ノード基準（句読点を除外）
+                named = [nd["origin_index"] for nd in nodes if nd.get("name") not in PUNCT]
+                if named:
+                    nd_non_diff = sum(1 for oi in named if oi not in diff_idx)
+                    ratios_named[depth].append(nd_non_diff / len(named))
+            n += 1
+            if n % 5000 == 0:
+                print(f"  scanned {n} pairs")
+    print(f"scanned {n} pairs total")
 
-    rows: list[dict[str, Any]] = []
-    for depth in depths:
+    # 集計行を構築
+    rows = []
+    for depth in DEPTHS:
         cs = cut_sizes[depth]
         ds = diff_sizes[depth]
         ra = ratios_all[depth]
@@ -123,28 +104,18 @@ def compute_scope_noise(
                 "nondiff_ratio_named_mean": round(statistics.mean(rn), 3) if rn else 0,
             }
         )
-    return rows
 
-
-def format_summary(rows: list[dict[str, Any]]) -> str:
-    """``compute_scope_noise`` の結果を表形式テキストに整形する。"""
-    lines = ["\n=== 非差分ノード比率（σ別, 全実装対で集計） ==="]
-    header = f"{'sigma':6} {'n':>7} {'cut_size(med)':>14} {'diff_size(med)':>15} {'nondiff_all(med)':>17} {'nondiff_named(med)':>19} {'nondiff_named(mean)':>20}"
-    lines.append(header)
+    # 要約表を標準出力に
+    print("\n=== 非差分ノード比率（σ別, 全実装対で集計） ===")
+    print(f"{'sigma':6} {'n':>7} {'cut_size(med)':>14} {'diff_size(med)':>15} {'nondiff_all(med)':>17} {'nondiff_named(med)':>19} {'nondiff_named(mean)':>20}")
     for row in rows:
-        lines.append(
+        print(
             f"{row['sigma']:6} {row['n']:>7} {row['cut_size_median']:>14} "
             f"{row['diff_size_median']:>15} {row['nondiff_ratio_all_median']:>17} "
             f"{row['nondiff_ratio_named_median']:>19} {row['nondiff_ratio_named_mean']:>20}"
         )
-    return "\n".join(lines)
 
-
-def main() -> None:
-    """cutouts.json を1パス走査し，σ別の非差分ノード比率を集計する。"""
-    with CUTOUTS.open("rb") as f:
-        rows = compute_scope_noise(ijson.items(f, "item"))
-    print(format_summary(rows))
+    # CSV 書き出し
     out = OUT_DIR / "scope_noise.csv"
     out.parent.mkdir(parents=True, exist_ok=True)
     with out.open("w", newline="") as f:
