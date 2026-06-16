@@ -10,32 +10,30 @@
 - ``setup`` / ``teardown`` (各スクリプト)
 - ``tests`` (``title``/``code``/``async`` を持つテストコード列)
 
-抽出結果は 1 ベンチマーク 1 ファイル
-``outputs/scan_jsperf/benchmarks/<slug>_r<N>.json`` として保存する．
-``index.json`` の identity (``slug``/``revision``/``year``/``url``/``lastmod``)
-を埋め込み，JSON 単独で出自を辿れるようにする．
+抽出結果は ``outputs/scan_jsperf/benchmarks.json`` に **全ベンチマークを 1
+ファイルにまとめて** 保存する．各エントリには ``index.json`` の identity
+(``slug``/``revision``/``year``/``url``/``lastmod``) を埋め込み，単独で出自
+を辿れるようにする．抽出失敗は ``outputs/scan_jsperf/extraction_errors.jsonl``
+に書き出す．
 
-抽出失敗は ``outputs/scan_jsperf/extraction_errors.jsonl`` に追記する．
+CLI:
+    ``--workers N`` で並列ワーカー数を指定．``1`` で逐次（デフォルト），``0``
+    で ``os.cpu_count()`` を採用．
 """
 
 from __future__ import annotations
 
+import argparse
 import json
+import os
 import re
 from collections.abc import Callable
+from concurrent.futures import ProcessPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from hayalab.config import PathConfig
-
-# --------------------------------------------------------------------------- #
-# 抽出パラメータ                                                                #
-# --------------------------------------------------------------------------- #
-OVERWRITE_EXISTING: bool = False
-"""``True`` のとき既存の benchmark JSON も再生成する．通常は ``False`` で十分．"""
-# --------------------------------------------------------------------------- #
-
 
 _JS_STRING_START_RE = re.compile(r"""self\.__next_f\.push\(\s*\[\s*1\s*,\s*(['"])""")
 _PAYLOAD_PREFIX_RE = re.compile(r"^[0-9a-fA-F]+:")
@@ -86,14 +84,14 @@ def _iter_js_string_bodies(html_text: str) -> list[str]:
 
 
 def _js_unescape(s: str) -> str:
-    r"""JavaScript シングルクォート文字列リテラルのエスケープを解決する．
+    r"""JavaScript 文字列リテラルのエスケープを解決する．
 
     対応するエスケープ: ``\\``, ``\'``, ``\"``, ``\n``, ``\t``, ``\r``,
     ``\b``, ``\f``, ``\/``, ``\0``, ``\xHH``, ``\uHHHH``．未知のエスケープは
     次の 1 文字をそのまま採用する．
 
     Args:
-        s: JS シングルクォート内の生テキスト．
+        s: JS 文字列内の生テキスト．
 
     Returns:
         エスケープを解決した文字列．
@@ -316,46 +314,52 @@ def extract_benchmark(html_text: str) -> dict[str, Any]:
     }
 
 
-def _benchmark_output_rel(entry: dict[str, Any]) -> str:
-    """``outputs/scan_jsperf/`` 起点での benchmark JSON 相対パスを返す．
+def _extract_entry(
+    task: tuple[dict[str, Any], Path],
+) -> tuple[dict[str, Any], dict[str, Any] | None, str | None]:
+    """per-entry ワーカー（HTML 読み込み + 抽出）．並列実行から呼ばれる．
+
+    ``ProcessPoolExecutor`` から呼べるよう副作用を持たず，結果をタプルで
+    返すだけにする．
 
     Args:
-        entry: ``index.json`` の単一エントリ（``slug``/``revision`` を持つ）．
+        task: ``(entry, html_path)`` のタプル．``entry`` は ``index.json`` の
+            単一エントリ，``html_path`` は対応する HTML の絶対パス．
 
     Returns:
-        ``benchmarks/<safe_slug>_r<revision>.json`` 形式の相対パス．
+        ``(entry, extracted_or_None, error_message_or_None)``．抽出に成功した
+        場合は ``extracted`` が辞書，失敗時は ``error_message`` が文字列．
     """
-    safe_slug = entry["slug"].replace("/", "_")
-    return f"benchmarks/{safe_slug}_r{entry['revision']}.json"
-
-
-def _append_error(error_log_path: Path, entry: dict[str, Any], message: str) -> None:
-    """抽出エラーを JSONL に追記する．
-
-    Args:
-        error_log_path: ``extraction_errors.jsonl`` のパス．
-        entry: ``index.json`` の単一エントリ．
-        message: エラーメッセージ．
-    """
-    error_log_path.parent.mkdir(parents=True, exist_ok=True)
-    record = {
-        "logged_at": _now_utc_iso(),
-        "url": entry["url"],
-        "slug": entry["slug"],
-        "revision": entry["revision"],
-        "year": entry["year"],
-        "source_html": entry["html_path"],
-        "error": message,
-    }
-    with error_log_path.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(record, ensure_ascii=False) + "\n")
+    entry, html_path = task
+    if not html_path.is_file():
+        return entry, None, f"HTML が存在しません: {html_path}"
+    try:
+        html_text = html_path.read_text(encoding="utf-8")
+        extracted = extract_benchmark(html_text)
+    except ValueError as exc:
+        return entry, None, str(exc)
+    except Exception as exc:  # noqa: BLE001 - 並列実行中の予期しないエラーも記録
+        return entry, None, f"{type(exc).__name__}: {exc}"
+    return entry, extracted, None
 
 
 if __name__ == "__main__":
+    # --- CLI 引数 -------------------------------------------------------------
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="並列ワーカー数（1=逐次，0=os.cpu_count()，N>=2=N プロセス並列）．デフォルト 1．",
+    )
+    cli_args = parser.parse_args()
+    workers = cli_args.workers if cli_args.workers != 0 else (os.cpu_count() or 1)
+
     # --- パス決定 ------------------------------------------------------------
     path_config = PathConfig()
     base_dir = path_config.outputs / "scan_jsperf"
     index_path = base_dir / "index.json"
+    benchmarks_path = base_dir / "benchmarks.json"
     error_log_path = base_dir / "extraction_errors.jsonl"
 
     # --- index.json の存在チェック -------------------------------------------
@@ -364,59 +368,89 @@ if __name__ == "__main__":
         print("先に get_html.py を実行してください．")
         raise SystemExit(1)
 
-    # --- 抽出対象（status=fetched）の列挙 -----------------------------------
+    # --- 抽出対象（status=fetched）の列挙＆順序固定 --------------------------
     index = json.loads(index_path.read_text(encoding="utf-8"))
     entries = index.get("entries", [])
     targets = [e for e in entries if e["status"] == "fetched"]
-    print(f"抽出対象: {len(targets)} / {len(entries)}")
+    targets.sort(key=lambda e: (-e["year"], e["slug"], e["revision"]))
+    tasks: list[tuple[dict[str, Any], Path]] = [(e, base_dir / e["html_path"]) for e in targets]
+    print(f"抽出対象: {len(tasks)} / {len(entries)} (workers={workers})")
 
-    # --- 抽出ループ ----------------------------------------------------------
-    n_ok = 0
-    n_skip = 0
-    n_ng = 0
-    for entry in targets:
-        out_path = base_dir / _benchmark_output_rel(entry)
-        if out_path.is_file() and not OVERWRITE_EXISTING:
-            n_skip += 1
+    # --- 並列／逐次で抽出 ---------------------------------------------------
+    results: list[tuple[dict[str, Any], dict[str, Any] | None, str | None]] = []
+    if workers <= 1:
+        for i, task in enumerate(tasks, 1):
+            results.append(_extract_entry(task))
+            if i % 200 == 0 or i == len(tasks):
+                print(f"  進捗: {i}/{len(tasks)}")
+    else:
+        chunksize = max(1, len(tasks) // (workers * 16))
+        with ProcessPoolExecutor(max_workers=workers) as pool:
+            for i, result in enumerate(pool.map(_extract_entry, tasks, chunksize=chunksize), 1):
+                results.append(result)
+                if i % 200 == 0 or i == len(tasks):
+                    print(f"  進捗: {i}/{len(tasks)}")
+
+    # --- 成功／失敗を仕分け --------------------------------------------------
+    benchmarks: list[dict[str, Any]] = []
+    errors: list[dict[str, Any]] = []
+    for entry, extracted, error in results:
+        if error is not None or extracted is None:
+            errors.append(
+                {
+                    "url": entry["url"],
+                    "slug": entry["slug"],
+                    "revision": entry["revision"],
+                    "year": entry["year"],
+                    "source_html": entry["html_path"],
+                    "error": error or "unknown",
+                }
+            )
             continue
-
-        html_path = base_dir / entry["html_path"]
-        if not html_path.is_file():
-            n_ng += 1
-            _append_error(error_log_path, entry, f"HTML が存在しません: {html_path}")
-            continue
-
-        try:
-            extracted = extract_benchmark(html_path.read_text(encoding="utf-8"))
-        except ValueError as exc:
-            n_ng += 1
-            _append_error(error_log_path, entry, str(exc))
-            continue
-
-        payload = {
-            "slug": entry["slug"],
-            "revision": entry["revision"],
-            "year": entry["year"],
-            "url": entry["url"],
-            "lastmod": entry["lastmod"],
-            "title": extracted["title"],
-            "description_text": extracted["description_text"],
-            "description_html": extracted["description_html"],
-            "preparation_html": extracted["preparation_html"],
-            "setup": extracted["setup"],
-            "teardown": extracted["teardown"],
-            "tests": extracted["tests"],
-            "source_html": entry["html_path"],
-            "extracted_at": _now_utc_iso(),
-        }
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        out_path.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True),
-            encoding="utf-8",
+        benchmarks.append(
+            {
+                "slug": entry["slug"],
+                "revision": entry["revision"],
+                "year": entry["year"],
+                "url": entry["url"],
+                "lastmod": entry["lastmod"],
+                "title": extracted["title"],
+                "description_text": extracted["description_text"],
+                "description_html": extracted["description_html"],
+                "preparation_html": extracted["preparation_html"],
+                "setup": extracted["setup"],
+                "teardown": extracted["teardown"],
+                "tests": extracted["tests"],
+                "source_html": entry["html_path"],
+            }
         )
-        n_ok += 1
+
+    # --- 単一 JSON に書き出し ------------------------------------------------
+    benchmarks_payload = {
+        "generated_at": _now_utc_iso(),
+        "source_index": "index.json",
+        "summary": {
+            "total_targets": len(tasks),
+            "extracted": len(benchmarks),
+            "failed": len(errors),
+        },
+        "benchmarks": benchmarks,
+    }
+    benchmarks_path.parent.mkdir(parents=True, exist_ok=True)
+    benchmarks_path.write_text(
+        json.dumps(benchmarks_payload, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+    # --- エラーログ（失敗があれば JSONL に上書き保存） ----------------------
+    if errors:
+        ts = _now_utc_iso()
+        error_log_path.parent.mkdir(parents=True, exist_ok=True)
+        with error_log_path.open("w", encoding="utf-8") as f:
+            for err in errors:
+                f.write(json.dumps({"logged_at": ts, **err}, ensure_ascii=False) + "\n")
 
     # --- 完了サマリ ----------------------------------------------------------
-    print(f"完了: ok={n_ok} skip={n_skip} ng={n_ng}")
-    if n_ng:
+    print(f"完了: 抽出={len(benchmarks)} 失敗={len(errors)} -> {benchmarks_path.name}")
+    if errors:
         print(f"  エラーログ: {error_log_path}")
