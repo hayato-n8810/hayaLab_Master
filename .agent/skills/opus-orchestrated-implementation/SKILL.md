@@ -106,7 +106,7 @@ effort: high
 ## 作業ルール
 
 1. 仕様書を **全文** 読んでから計画を書く。曖昧な点は `[要確認]` タグを付けて記録する。
-2. このプロジェクトの `AGENT.md` と `.agent/agent-instructions.md` の規約を遵守する。
+2. このプロジェクトの `AGENT.md` の規約を遵守する。
 3. 計画書を保存したら、保存先パスと主要ステップの概要をメインセッションに返す。
 4. コードは書かない。計画書のみを出力する。
 ```
@@ -141,8 +141,10 @@ model: inherit
 
 ```bash
 # Opusをオーケストレーターとして起動（推奨）
-claude --model claude-opus-4-6
-
+claude --model claude-opus-4-7
+# Sonnetをオーケストレーターとして起動（実験的）
+claude --model claude-sonnet-4-7
+```
 # settings.json に CLAUDE_CODE_SUBAGENT_MODEL が設定されていれば
 # architect → Opus（frontmatterで上書き）
 # implementer → Sonnet（inherit → settings.jsonのenv値を使用）

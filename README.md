@@ -17,8 +17,8 @@ AI Agent（VSCode Copilot, Claude 等）の動作ルールやコンテキスト�
 
 | パス | 役割 |
 |---|---|
-| `.agent/agent-instructions.md` | 常時適用するルール・境界規約 |
-| `.agent/instructions/*.md` | ファイル種別ごとの追加ルール |
+| `AGENT.md` | プロジェクト概要・全ルール・ワークスペース案内（常時適用） |
+| `.agent/instructions/*.md` | セッション固有の研究コンテキスト |
 | `.agent/prompts/*.md` | 再利用プロンプト集 |
 | `.agent/skills/*.md` | 再利用スキル（複数ステップの手順） |
 | `.agent/plans/` | 計画書の出力先（`YYYY-MM-DD-<topic>.md`） |
