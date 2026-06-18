@@ -18,6 +18,7 @@
 # 取得件数・スリープ間隔は get_html.py 冒頭の FETCH_LIMIT / SLEEP_SECONDS で
 # 直接調整する（CLI 引数ではない）．本番運用時は FETCH_LIMIT=None に変更．
 
+# 2026/06/16時点の収集
 set -eu
 
 # 1. get_html: サイトマップから HTML を順次取得
