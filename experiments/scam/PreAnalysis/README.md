@@ -91,4 +91,4 @@ experiments/scam/PreAnalysis/ 側:
 - `run.py` — CLI・I/O・パス決定。 hayalab の単体処理を組み合わせて全 MBDiff レコードを処理
 
 境界規約: 純粋ロジックは ``hayalab.scam.*`` に置き I/O を持たない。 並列化・パス決定・
-ファイル書き出しは ``run.py`` のみが担当する（agent-instructions.md の Boundary Rules）。
+ファイル書き出しは ``run.py`` のみが担当する（AGENT.md の Boundary Rules）。
