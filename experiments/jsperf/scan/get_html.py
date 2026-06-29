@@ -195,7 +195,7 @@ def _fetch_one(session: requests.Session, url: str) -> tuple[int, str]:
 if __name__ == "__main__":
     # --- パス決定 ------------------------------------------------------------
     path_config = PathConfig()
-    base_dir = path_config.outputs / "scan_jsperf"
+    base_dir = path_config.outputs / "jsperf" / "scan"
     xml_dir = path_config.data / "jsPerf_xml"
     index_path = base_dir / "index.json"
 

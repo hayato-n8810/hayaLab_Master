@@ -160,7 +160,7 @@ if __name__ == "__main__":
 
     # --- パス決定 ------------------------------------------------------------
     path_config = PathConfig()
-    out_dir = path_config.outputs / "scan_jsperf"
+    out_dir = path_config.outputs / "jsperf" / "scan"
     index_path = out_dir / "index.json"
     benchmarks_path = out_dir / "benchmarks.json"
     error_log_path = out_dir / "extraction_errors.jsonl"
