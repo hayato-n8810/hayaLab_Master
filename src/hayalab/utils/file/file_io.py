@@ -16,15 +16,16 @@ def read_file(file_path: str) -> str:
         return f.read()
 
 
-def write_file(file_path: str, data: str) -> None:
+def write_file(file_path: str, data: str, sort_flg: bool = True) -> None:
     """文字列をファイルとして書き込む。
 
     Args:
         data (str): 書き込むデータ。
         file_path (str): 書き込むファイルのパス。
+        sort_flg (bool): JSONのキーをソートするかどうか。
     """
     Path(file_path).parent.mkdir(parents=True, exist_ok=True)
-    with open(file_path, "w", encoding="utf-8") as f:
+    with open(file_path, "w", encoding="utf-8", sort_keys=sort_flg) as f:
         f.write(data)
 
 
