@@ -1,0 +1,16 @@
+# Step3 コンテナ。 リポジトリ全体をマウントし、npm と Python を同一環境で動かす。
+services:
+  bench:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: jsperf-step3-runner:latest
+    container_name: jsperf-step3
+    working_dir: /workspace
+    tty: true
+    command: tail -f /dev/null
+    environment:
+      PYTHONUNBUFFERED: "1"
+      NODE_PATH: /workspace/experiments/jsperf/setup/step3/node_modules
+    volumes:
+      - ../../../..:/workspace:rw

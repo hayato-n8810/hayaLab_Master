@@ -1,0 +1,9 @@
+{
+  "name": "jsperf-step3-env",
+  "version": "0.0.0",
+  "private": true,
+  "description": "npm workspace for step3 library-by-library trials",
+  "dependencies": {
+    "crypto-js": "^4.2.0"
+  }
+}
