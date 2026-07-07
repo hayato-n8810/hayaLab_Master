@@ -54,8 +54,39 @@ def write_json(file_path: str, data: dict) -> None:
         json.dump(data, f, ensure_ascii=False, indent=4)
 
 
+def read_jsonl(file_path: str) -> list[dict]:
+    """JSONL ファイルをリストとして読み込む.
+
+    Args:
+        file_path (str): 読み込むJSONLファイルのパス
+
+    Returns:
+        list[dict]: JSONLファイルの内容
+    """
+    records: list[dict] = []
+    with open(file_path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                records.append(json.loads(line))
+    return records
+
+
+def write_jsonl(file_path: str, data: list[dict]) -> None:
+    """辞書のリストをJSONL として書き出す (順序保存).
+
+    Args:
+        data (list[dict]): 書き込むデータ
+        file_path (str): 書き込むJSONLファイルのパス
+    """
+    Path(file_path).parent.mkdir(parents=True, exist_ok=True)
+    with open(file_path, "w", encoding="utf-8") as f:
+        for r in data:
+            f.write(json.dumps(r, ensure_ascii=False) + "\n")
+
+
 def read_csv(file_path: str) -> dict:
-    """JSONファイルを読み込む。
+    """CSVファイルを読み込む。
 
     Args:
         file_path (str): 読み込むcsvファイルのパス。
