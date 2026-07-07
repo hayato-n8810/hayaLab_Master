@@ -4,6 +4,8 @@
 step2 で Node 失敗 (`node_success=false`) となった program のうち
 `meta.json.cdn_urls` が `--url-pattern` にマッチするものに
 `require` 挿入を施して再実行し、結果を保存する.
+
+使い方は `experiments/jsperf/setup/step3/run_npm_resolve.sh`参照
 """
 
 from __future__ import annotations
@@ -36,22 +38,10 @@ ERROR_TYPE_KEYS: tuple[str, ...] = (
 )
 
 
-# --- Helpers (関数化: 複数箇所または per-record worker) -----------------
-def _write_jsonl(path: Path, records: list[dict]) -> None:
-    """レコード列を JSONL として書き出す (順序保存)."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as f:
-        for r in records:
-            f.write(json.dumps(r, ensure_ascii=False) + "\n")
-
-
 def _url_matches(cdn_urls: list[str], pattern: str) -> bool:
     """CDN URL リストに pattern (case-insensitive substring) が含まれるか判定する."""
     p = pattern.lower()
     return any(p in url.lower() for url in cdn_urls)
-
-
-_INJECTED_PREFIX: str = "// [step3-trial] injected require\n"
 
 
 def _make_import_line(binding: str, library: str) -> str:
@@ -72,7 +62,7 @@ def _run_trial_program(job: tuple[str, str, int, str, str, Path, Path]) -> dict:
     slug_id, slug, test_idx, library, binding, src_program, dst_program = job
 
     original: str = src_program.read_text(encoding="utf-8")
-    injected: str = _INJECTED_PREFIX + _make_import_line(binding, library) + original
+    injected: str = _make_import_line(binding, library) + original
     dst_program.parent.mkdir(parents=True, exist_ok=True)
     dst_program.write_text(injected, encoding="utf-8")
 
@@ -200,7 +190,7 @@ if __name__ == "__main__":
             "error_type_counts": {k: 0 for k in ERROR_TYPE_KEYS},
         }
         hayalab.write_json(TRIAL_DIR / "summary.json", summary)
-        _write_jsonl(TRIAL_DIR / "results.jsonl", [])
+        hayalab.write_jsonl(TRIAL_DIR / "results.jsonl", [])
         print("[trial] no targets matched — wrote empty results.")
         raise SystemExit(0)
 
@@ -214,7 +204,7 @@ if __name__ == "__main__":
 
     # --- Section 6: 結果書き出しと集計 ---
     results.sort(key=lambda x: (x["slug_id"], x["test_idx"]))
-    _write_jsonl(TRIAL_DIR / "results.jsonl", results)
+    hayalab.write_jsonl(TRIAL_DIR / "results.jsonl", results)
 
     status_counts_c: Counter[str] = Counter(r["status"] for r in results)
     error_type_counts_c: Counter[str] = Counter(r["error_type"] for r in results if r["error_type"])
