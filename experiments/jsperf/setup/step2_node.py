@@ -7,22 +7,17 @@ worker=35 の並列で `node` 実行 (タイムアウトなし、エラー時 1 
 
 from __future__ import annotations
 
-import json
 import time
 from collections import Counter
-from collections.abc import Iterable
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
-
-from tqdm import tqdm
 
 import hayalab
 from hayalab.config import PathConfig
 from hayalab.utils.file.exec import classify_node_error, run_node
 
 # --- Constants ------------------------------------------------------
-MAX_WORKERS: int = 35
-CHUNK_SIZE: int = 100
+MAX_WORKERS: int = 25
 NODE_BIN: str = "node"
 TIMEOUT: float = 180.0  # seconds
 ERROR_TYPE_KEYS: tuple[str, ...] = (
@@ -35,21 +30,6 @@ ERROR_TYPE_KEYS: tuple[str, ...] = (
     "Timeout",
     "OtherError",
 )
-
-
-# --- Helpers --------------------------------------------------------
-def _write_jsonl(path: Path, records: Iterable[dict]) -> None:
-    """辞書レコードを JSON Lines (UTF-8) として書き出す.
-
-    Args:
-        path: 出力ファイルパス.
-        records: 書き出す辞書のイテラブル.
-    """
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as f:
-        for rec in records:
-            f.write(json.dumps(rec, ensure_ascii=False))
-            f.write("\n")
 
 
 def _run_program_with_retry(job: tuple[str, str, int, Path]) -> dict:
@@ -106,6 +86,7 @@ if __name__ == "__main__":
         bench_ids.append(slug_id)
         for i in range(int(meta["test_count"])):
             jobs.append((slug_id, slug, i, bench_dir / f"program_{i}.js"))
+
     print(f"benchmarks: {len(bench_ids)}")
     print(f"total programs: {len(jobs)}")
 
@@ -113,17 +94,13 @@ if __name__ == "__main__":
     start = time.perf_counter()
     results: list[dict] = []
     with ProcessPoolExecutor(max_workers=MAX_WORKERS) as executor:
-        for r in tqdm(
-            executor.map(_run_program_with_retry, jobs, chunksize=CHUNK_SIZE),
-            total=len(jobs),
-            desc="step2",
-        ):
+        for r in executor.map(_run_program_with_retry, jobs):
             results.append(r)
     elapsed_sec = time.perf_counter() - start
 
     # --- Section 4: results.jsonl / tags.jsonl の書き出し (ソート済み) ---
     results.sort(key=lambda x: (x["slug_id"], x["test_idx"]))
-    _write_jsonl(STEP2_DIR / "results.jsonl", results)
+    hayalab.write_jsonl(STEP2_DIR / "results.jsonl", results)
 
     tags: list[dict] = [
         {
@@ -134,7 +111,7 @@ if __name__ == "__main__":
         }
         for r in results
     ]
-    _write_jsonl(STEP2_DIR / "tags.jsonl", tags)
+    hayalab.write_jsonl(STEP2_DIR / "tags.jsonl", tags)
 
     # --- Section 5: 集計 ---
     status_counts_c: Counter[str] = Counter(r["status"] for r in results)
