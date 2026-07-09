@@ -14,7 +14,7 @@ meta.json.cdn_urls から必要ライブラリを判定して require を挿入�
 出力: `outputs/jsperf/setup/step3/`
 - `benchmark/<slug_id>/program_<i>.js`: require 挿入済み JS (試行対象になったベンチマークのみ)
 - `results.jsonl`: step3 実行結果 (per program)
-- `tags.jsonl`: node_success タグ (全 program) — 挿入対象ベンチマークは step3 結果、それ以外は step2 結果を採用
+- `tags.jsonl`: 全 program のタグ — `node_success` (step2 の結果そのまま) と `npm_success` (step3 の npm 注入後に成功したか) を独立に保持
 - `summary.json`: 集計
 
 なお、npm パッケージは `experiments/jsperf/setup/step3/package.json` (単一) で管理
@@ -52,32 +52,30 @@ ERROR_TYPE_KEYS: tuple[str, ...] = (
 
 # --- Helpers (per-record 処理) -----------------
 def _resolve_libs_for_urls(cdn_urls: list[str], resolver: list[dict]) -> list[tuple[str, str, str | None]]:
-    """各ベンチマークの CDN URL リストに対応するライブラリの (package, binding, post_require) 組を返す.
-        package: npm パッケージ名, binding: require での変数名, post_require: インスタンス生成などの require 後に実行するコード (None ならなし)
+    """各ベンチマークの CDN URL リストに対応するライブラリの (package, binding) 組を返す.
+        package: npm パッケージ名, binding: require での変数名
 
     Args:
         cdn_urls (list[str]): 各ベンチマークのCDNのURL（ meta.json.cdn_urls )
         resolver (list[dict]): cdn_list_resolve.json の libraries 配列
 
     Returns:
-        list[tuple[str, str, str | None]]:
-            (ライブラリ名, バインディング名, post_require) の組のリスト.
-            `post_require` が resolver に定義されていないライブラリは 3 要素目が None.
+        list[tuple[str, str]]:
+            (ライブラリ名, バインディング名) の組のリスト.
     """
-    hits: list[tuple[str, str, str | None]] = []
+    hits: list[tuple[str, str]] = []
     seen_pkgs: set[str] = set()
     seen_bindings: set[str] = set()
     for entry in resolver:
         patterns: list[str] = [p.lower() for p in entry["patterns"]]
         pkg: str = entry["package"]
         binding: str = entry["binding"]
-        post_require: str | None = entry.get("post_require")
         if pkg in seen_pkgs or binding in seen_bindings:
             continue
         for u in cdn_urls:
             ul = u.lower()
             if any(pat in ul for pat in patterns):
-                hits.append((pkg, binding, post_require))
+                hits.append((pkg, binding))
                 seen_pkgs.add(pkg)
                 seen_bindings.add(binding)
                 break
@@ -85,12 +83,12 @@ def _resolve_libs_for_urls(cdn_urls: list[str], resolver: list[dict]) -> list[tu
 
 
 def _run_step3_program(
-    job: tuple[str, str, int, tuple[tuple[str, str, str | None], ...], Path, Path],
+    job: tuple[str, str, int, tuple[tuple[str, str], ...], Path, Path],
 ) -> dict:
-    """1 program に require + post_require を挿入し node で実行する per-record worker.
+    """1 program に require を挿入し node で実行する per-record worker.
 
     Args:
-        job (tuple[str, str, int, tuple[tuple[str, str, str  |  None], ...], Path, Path]): 実行するプログラム1件の情報
+        job (tuple[str, str, int, tuple[tuple[str, str], ...], Path, Path]): 実行するプログラム1件の情報
 
     Returns:
         dict: results.jsonl 1 行分（id，test_code，ライブラリ，error_type，エラー出力）
@@ -98,11 +96,9 @@ def _run_step3_program(
     slug_id, slug, test_idx, libs, src_program, dst_program = job
 
     lines: list[str] = []
-    for pkg, binding, post_require in libs:
+    for pkg, binding in libs:
         lines.append("// Package injected\n")
         lines.append(f"const {binding} = require({json.dumps(pkg)});\n")
-        if post_require:
-            lines.append(post_require.rstrip("\n") + "\n")
     lines.append("\n// Test program source code:\n")
     require_block: str = "".join(lines)
     original: str = src_program.read_text(encoding="utf-8")
@@ -119,7 +115,7 @@ def _run_step3_program(
         "slug_id": slug_id,
         "slug": slug,
         "test_idx": test_idx,
-        "libraries": [pkg for pkg, _b, _p in libs],
+        "libraries": [pkg for pkg, _b in libs],
         "n_libraries": len(libs),
         "path": f"benchmark/{slug_id}/program_{test_idx}.js",
         "status": res["status"],
@@ -228,7 +224,7 @@ if __name__ == "__main__":
     print(f"[step3] target benchmarks (not all Step2 node_success): {len(target_slug_ids)}")
 
     meta_cache: dict[str, dict] = {}
-    jobs: list[tuple[str, str, int, tuple[tuple[str, str, str | None], ...], Path, Path]] = []
+    jobs: list[tuple[str, str, int, tuple[tuple[str, str], ...], Path, Path]] = []
     skipped_bench_no_meta: int = 0
     skipped_bench_no_lib: int = 0
     lib_count_dist: Counter[int] = Counter()
@@ -241,7 +237,7 @@ if __name__ == "__main__":
         meta_cache[slug_id] = meta
 
         cdn_urls: list[str] = list(meta.get("cdn_urls", []))
-        libs: list[tuple[str, str, str | None]] = _resolve_libs_for_urls(cdn_urls, resolver)
+        libs: list[tuple[str, str]] = _resolve_libs_for_urls(cdn_urls, resolver)
         if not libs:
             skipped_bench_no_lib += 1
             continue
@@ -277,24 +273,21 @@ if __name__ == "__main__":
         print("[step3] no target jobs — skipping node execution.")
 
     # --- Section 7: results.jsonl / tags.jsonl 書き出し ---
-    # 対象ベンチマークの program のタグを更新
-    # 挿入対象外の program (非対象ベンチマーク) は step2 のタグを維持
+    # node_success は step2 の結果をそのまま保持し、step3 (npm 注入後) の結果は
+    # npm_success として別タグに記録する (注入対象外の program は npm_success=false)
     hayalab.write_jsonl(STEP3_OUT / "results.jsonl", results)
 
     step3_result_map: dict[tuple[str, int], str] = {(r["slug_id"], r["test_idx"]): r["status"] for r in results}
     tags_out: list[dict] = []
     for rec in step2_tags:
         key: tuple[str, int] = (rec["slug_id"], rec["test_idx"])
-        if key in step3_result_map:
-            node_success: bool = step3_result_map[key] == "success"
-        else:
-            node_success = bool(rec.get("node_success", False))
         tags_out.append(
             {
                 "slug_id": rec["slug_id"],
                 "slug": rec["slug"],
                 "test_idx": rec["test_idx"],
-                "node_success": node_success,
+                "node_success": bool(rec.get("node_success", False)),
+                "npm_success": step3_result_map.get(key) == "success",
             }
         )
     tags_out.sort(key=lambda x: (x["slug_id"], x["test_idx"]))
@@ -310,9 +303,10 @@ if __name__ == "__main__":
     }
     error_type_counts = {k: error_type_counts_c.get(k, 0) for k in ERROR_TYPE_KEYS}
 
+    # benchmark 単位集計は npm_success (いずれかの経路で Node 実行可能) で判定
     bench_flags: dict[str, list[bool]] = defaultdict(list)
     for t in tags_out:
-        bench_flags[t["slug_id"]].append(bool(t["node_success"]))
+        bench_flags[t["slug_id"]].append(bool(t["npm_success"]))
     benchmarks_all_success = sum(1 for flags in bench_flags.values() if flags and all(flags))
     benchmarks_partial = sum(1 for flags in bench_flags.values() if flags and any(flags) and not all(flags))
     benchmarks_all_failed = sum(1 for flags in bench_flags.values() if flags and not any(flags))
@@ -355,7 +349,9 @@ if __name__ == "__main__":
         "error_type_counts": error_type_counts,
         "newly_successful": newly_successful,
         "newly_broken": newly_broken,
-        "cumulative_node_success": sum(1 for t in tags_out if t["node_success"]),
+        "node_success_total": sum(1 for t in tags_out if t["node_success"]),
+        "npm_success_total": sum(1 for t in tags_out if t["npm_success"]),
+        "node_or_npm_success_total": sum(1 for t in tags_out if t["node_success"] or t["npm_success"]),
         "benchmark_summary": {
             "benchmarks_total": len(bench_flags),
             "benchmarks_all_success": benchmarks_all_success,
@@ -380,7 +376,9 @@ if __name__ == "__main__":
     print(f"[step3] error_type_counts: {error_type_counts}")
     print(f"[step3] newly_successful (step2 fail → step3 success): {newly_successful}")
     print(f"[step3] newly_broken     (step2 success → step3 fail): {newly_broken}")
-    print(f"[step3] cumulative_node_success: {summary['cumulative_node_success']}")
+    print(f"[step3] node_success_total: {summary['node_success_total']}")
+    print(f"[step3] npm_success_total:  {summary['npm_success_total']}")
+    print(f"[step3] node_or_npm_success_total: {summary['node_or_npm_success_total']}")
     print(f"[step3] benchmark_summary: {summary['benchmark_summary']}")
     print(f"[step3] success rate by libcount: {summary['success_rate_by_libcount']}")
     print(f"[step3] outputs: {STEP3_OUT}")
