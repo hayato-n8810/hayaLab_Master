@@ -1,0 +1,15 @@
+services:
+  bench-step4:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: jsperf-step4
+    volumes:
+      - ../../../..:/workspace
+    working_dir: /workspace
+    environment:
+      - UV_LINK_MODE=copy
+      # コンテナ内の Python 用 playwright ブラウザはイメージ同梱のものを使う
+      - PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+    # 外部 CDN への live fetch を行うためネットワークはデフォルト (bridge) のまま
+    init: true
