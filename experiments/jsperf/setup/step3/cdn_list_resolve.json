@@ -1,0 +1,1857 @@
+{
+  "version": 2,
+  "description": "URL substring pattern → npm package mapping for jsperf CDN resolution",
+  "libraries": [
+    {
+      "package": "luxon",
+      "version": "*",
+      "binding": "luxon",
+      "patterns": [
+        "luxon"
+      ]
+    },
+    {
+      "package": "lodash",
+      "version": "^4.17.21",
+      "binding": "_",
+      "patterns": [
+        "lodash"
+      ]
+    },
+    {
+      "package": "underscore",
+      "version": "^1.13.7",
+      "binding": "_",
+      "patterns": [
+        "underscore"
+      ]
+    },
+    {
+      "package": "underscore.string",
+      "version": "^3.3.6",
+      "binding": "s",
+      "patterns": [
+        "underscore.string"
+      ]
+    },
+    {
+      "package": "handlebars",
+      "version": "^4.7.8",
+      "binding": "Handlebars",
+      "patterns": [
+        "handlebars"
+      ]
+    },
+    {
+      "package": "moment",
+      "version": "^2.30.1",
+      "binding": "moment",
+      "patterns": [
+        "momentjs.com",
+        "cdnjs.cloudflare.com/ajax/libs/moment",
+        "/moment.js",
+        "/moment.min.js",
+        "/moment@",
+        "/npm/moment",
+        "/moment-with-locales",
+        "moment-timezone"
+      ]
+    },
+    {
+      "package": "immutable",
+      "version": "^4.3.7",
+      "binding": "Immutable",
+      "patterns": [
+        "immutable"
+      ]
+    },
+    {
+      "package": "mustache",
+      "version": "^4.2.0",
+      "binding": "Mustache",
+      "patterns": [
+        "mustache"
+      ]
+    },
+    {
+      "package": "ramda",
+      "version": "^0.30.1",
+      "binding": "R",
+      "patterns": [
+        "ramda"
+      ]
+    },
+    {
+      "package": "bluebird",
+      "version": "^3.7.2",
+      "binding": "Promise",
+      "patterns": [
+        "bluebird"
+      ]
+    },
+    {
+      "package": "hogan.js",
+      "version": "^3.0.2",
+      "binding": "Hogan",
+      "patterns": [
+        "hogan"
+      ]
+    },
+    {
+      "package": "sugar",
+      "version": "^2.0.6",
+      "binding": "Sugar",
+      "patterns": [
+        "sugar"
+      ]
+    },
+    {
+      "package": "sjcl",
+      "version": "*",
+      "binding": "sjcl",
+      "patterns": [
+        "/sjcl/",
+        "sjcl.js",
+        "sjcl.min.js"
+      ]
+    },
+    {
+      "package": "asmcrypto.js",
+      "version": "*",
+      "binding": "asmCrypto",
+      "patterns": [
+        "asmcrypto.js",
+        "asmcrypto.min.js",
+        "/asmcrypto/",
+        "/asmcrypto@"
+      ]
+    },
+    {
+      "package": "crypto-js",
+      "version": "^4.2.0",
+      "binding": "CryptoJS",
+      "patterns": [
+        "/crypto-js@",
+        "/crypto-js/",
+        "cdnjs.cloudflare.com/ajax/libs/crypto-js/",
+        "crypto-js.googlecode.com"
+      ]
+    },
+    {
+      "package": "async",
+      "version": "^3.2.6",
+      "binding": "async",
+      "patterns": [
+        "/async"
+      ]
+    },
+    {
+      "package": "q",
+      "version": "^1.5.1",
+      "binding": "Q",
+      "patterns": [
+        "q.js",
+        "/npm/q@"
+      ]
+    },
+    {
+      "package": "mathjs",
+      "version": "^13.2.3",
+      "binding": "math",
+      "patterns": [
+        "mathjs"
+      ]
+    },
+    {
+      "package": "rxjs",
+      "version": "^7.8.1",
+      "binding": "rxjs",
+      "patterns": [
+        "rxjs",
+        "rx.js"
+      ]
+    },
+    {
+      "package": "coffeescript",
+      "version": "^2.7.0",
+      "binding": "CoffeeScript",
+      "patterns": [
+        "coffee"
+      ]
+    },
+    {
+      "package": "linq",
+      "version": "^4.0.3",
+      "binding": "Enumerable",
+      "patterns": [
+        "linq"
+      ]
+    },
+    {
+      "package": "seedrandom",
+      "version": "^3.0.5",
+      "binding": "seedrandom",
+      "patterns": [
+        "seedrandom"
+      ]
+    },
+    {
+      "package": "big.js",
+      "version": "^6.2.2",
+      "binding": "Big",
+      "patterns": [
+        "big.js"
+      ]
+    },
+    {
+      "package": "bignumber.js",
+      "version": "^9.1.2",
+      "binding": "BigNumber",
+      "patterns": [
+        "bignumber"
+      ]
+    },
+    {
+      "package": "chance",
+      "version": "^1.1.12",
+      "binding": "Chance",
+      "patterns": [
+        "chance"
+      ]
+    },
+    {
+      "package": "decimal.js",
+      "version": "^10.4.3",
+      "binding": "Decimal",
+      "patterns": [
+        "decimal"
+      ]
+    },
+    {
+      "package": "marked",
+      "version": "^14.1.3",
+      "binding": "marked",
+      "patterns": [
+        "marked"
+      ]
+    },
+    {
+      "package": "showdown",
+      "version": "^2.1.0",
+      "binding": "showdown",
+      "patterns": [
+        "showdown"
+      ]
+    },
+    {
+      "package": "es5-shim",
+      "version": "^4.6.7",
+      "binding": "_es5shim",
+      "patterns": [
+        "es5-shim"
+      ]
+    },
+    {
+      "package": "es6-shim",
+      "version": "^0.35.8",
+      "binding": "_es6shim",
+      "patterns": [
+        "es6-shim"
+      ]
+    },
+    {
+      "package": "gl-matrix",
+      "version": "^3.4.3",
+      "binding": "glMatrix",
+      "patterns": [
+        "gl-matrix"
+      ]
+    },
+    {
+      "package": "markdown-it",
+      "version": "^14.1.0",
+      "binding": "MarkdownIt",
+      "patterns": [
+        "markdown-it"
+      ]
+    },
+    {
+      "package": "remarkable",
+      "version": "^2.0.1",
+      "binding": "Remarkable",
+      "patterns": [
+        "remarkable"
+      ]
+    },
+    {
+      "package": "crossfilter2",
+      "version": "^1.5.4",
+      "binding": "crossfilter",
+      "patterns": [
+        "crossfilter"
+      ]
+    },
+    {
+      "package": "mori",
+      "version": "^0.3.2",
+      "binding": "mori",
+      "patterns": [
+        "mori"
+      ]
+    },
+    {
+      "package": "dayjs",
+      "version": "^1.11.13",
+      "binding": "dayjs",
+      "patterns": [
+        "dayjs"
+      ]
+    },
+    {
+      "package": "@babel/core",
+      "version": "^7.25.9",
+      "binding": "babel",
+      "patterns": [
+        "babel"
+      ]
+    },
+    {
+      "package": "pug",
+      "version": "^3.0.3",
+      "binding": "pug",
+      "patterns": [
+        "jade",
+        "/pug@"
+      ]
+    },
+    {
+      "package": "hash-wasm",
+      "version": "^4.11.0",
+      "binding": "hashwasm",
+      "patterns": [
+        "hash-wasm"
+      ]
+    },
+    {
+      "package": "dustjs-linkedin",
+      "version": "^3.0.1",
+      "binding": "dust",
+      "patterns": [
+        "dust"
+      ]
+    },
+    {
+      "package": "json3",
+      "version": "^3.3.3",
+      "binding": "JSON3",
+      "patterns": [
+        "json3"
+      ]
+    },
+    {
+      "package": "jquery-ui",
+      "version": "^1.13.3",
+      "binding": "_jqueryui",
+      "patterns": [
+        "jquery/ui",
+        "jquery-ui",
+        "jqueryui"
+      ]
+    },
+    {
+      "package": "jquery-mobile",
+      "version": "^1.5.0",
+      "binding": "_jqm",
+      "patterns": [
+        "jquery-mobile",
+        "jquery.mobile"
+      ]
+    },
+    {
+      "package": "jquery-color",
+      "version": "^2.2.0",
+      "binding": "_jqcolor",
+      "patterns": [
+        "jquery.color",
+        "jquery-color"
+      ]
+    },
+    {
+      "package": "jquery",
+      "version": "^3.7.1",
+      "binding": "$",
+      "patterns": [
+        "/ajax/libs/jquery/",
+        "cdn.jsdelivr.net/jquery/",
+        "ajax.aspnetcdn.com/ajax/jquery/",
+        "ajax.microsoft.com/ajax/jquery/",
+        "code.jquery.com/jquery-",
+        "code.jquery.com/jquery.js",
+        "code.jquery.com/jquery.min.js",
+        "codeorigin.jquery.com/jquery-",
+        "/npm/jquery@",
+        "unpkg.com/jquery",
+        "/jquery.js",
+        "/jquery.min.js",
+        "/jquery.slim.js",
+        "/jquery.slim.min.js",
+        "/jquery-1.",
+        "/jquery-2.",
+        "/jquery-3.",
+        "/jquery/1.",
+        "/jquery/2.",
+        "/jquery/3.",
+        "/jquery_library-",
+        "jquery-migrate"
+      ]
+    },
+    {
+      "package": "angular",
+      "version": "^1.8.3",
+      "binding": "angular",
+      "patterns": [
+        "angular"
+      ]
+    },
+    {
+      "package": "backbone",
+      "version": "^1.6.0",
+      "binding": "Backbone",
+      "patterns": [
+        "backbone"
+      ]
+    },
+    {
+      "package": "react-dom",
+      "version": "^18.3.1",
+      "binding": "ReactDOM",
+      "patterns": [
+        "react-dom"
+      ]
+    },
+    {
+      "package": "react",
+      "version": "^18.3.1",
+      "binding": "React",
+      "patterns": [
+        "/react@",
+        "/react.",
+        "/react/",
+        "cdnjs.cloudflare.com/ajax/libs/react/",
+        "fb.me/react-",
+        "unpkg.com/react",
+        "react-with-addons"
+      ]
+    },
+    {
+      "package": "knockout",
+      "version": "^3.5.1",
+      "binding": "ko",
+      "patterns": [
+        "knockout"
+      ]
+    },
+    {
+      "package": "vue",
+      "version": "^3.5.13",
+      "binding": "Vue",
+      "patterns": [
+        "/vue@",
+        "/vue.js",
+        "/vue.min.js",
+        "/vue.global.js",
+        "/vue.esm",
+        "/vue/dist/",
+        "cdnjs.cloudflare.com/ajax/libs/vue/",
+        "vuejs.org",
+        "unpkg.com/vue",
+        "/npm/vue@"
+      ]
+    },
+    {
+      "package": "ember-source",
+      "version": "^5.12.0",
+      "binding": "Ember",
+      "patterns": [
+        "ember"
+      ]
+    },
+    {
+      "package": "mithril",
+      "version": "^2.2.13",
+      "binding": "m",
+      "patterns": [
+        "mithril"
+      ]
+    },
+    {
+      "package": "mootools",
+      "version": "^1.6.0",
+      "binding": "MooTools",
+      "patterns": [
+        "mootools"
+      ]
+    },
+    {
+      "package": "prototype",
+      "version": "^1.7.3",
+      "binding": "Prototype",
+      "patterns": [
+        "prototype"
+      ]
+    },
+    {
+      "package": "dojo",
+      "version": "^1.10.0",
+      "binding": "dojo",
+      "patterns": [
+        "dojo"
+      ]
+    },
+    {
+      "package": "zepto",
+      "version": "^1.2.0",
+      "binding": "_zepto",
+      "patterns": [
+        "zepto"
+      ]
+    },
+    {
+      "package": "d3",
+      "version": "^7.9.0",
+      "binding": "d3",
+      "patterns": [
+        "d3.v",
+        "/d3/",
+        "/d3js.org/",
+        "/npm/d3@"
+      ]
+    },
+    {
+      "package": "raphael",
+      "version": "^2.3.0",
+      "binding": "Raphael",
+      "patterns": [
+        "raphael"
+      ]
+    },
+    {
+      "package": "paper",
+      "version": "^0.12.18",
+      "binding": "paper",
+      "patterns": [
+        "paper.js"
+      ]
+    },
+    {
+      "package": "three",
+      "version": "^0.169.0",
+      "binding": "THREE",
+      "patterns": [
+        "three.js",
+        "three.min.js",
+        "/three@",
+        "/threejs/"
+      ]
+    },
+    {
+      "package": "pixi.js",
+      "version": "^8.5.2",
+      "binding": "PIXI",
+      "patterns": [
+        "pixi.js",
+        "pixijs",
+        "pixi.min.js",
+        "/pixi@",
+        "/pixi/"
+      ]
+    },
+    {
+      "package": "highcharts",
+      "version": "^11.4.8",
+      "binding": "Highcharts",
+      "patterns": [
+        "highcharts"
+      ]
+    },
+    {
+      "package": "leaflet",
+      "version": "^1.9.4",
+      "binding": "L",
+      "patterns": [
+        "leaflet"
+      ]
+    },
+    {
+      "package": "chart.js",
+      "version": "^4.4.5",
+      "binding": "Chart",
+      "patterns": [
+        "chart.js",
+        "chartjs",
+        "/chart@"
+      ]
+    },
+    {
+      "package": "gsap",
+      "version": "^3.13.0",
+      "binding": "gsap",
+      "patterns": [
+        "gsap",
+        "greensock"
+      ]
+    },
+    {
+      "package": "hammerjs",
+      "version": "^2.0.8",
+      "binding": "Hammer",
+      "patterns": [
+        "hammer"
+      ]
+    },
+    {
+      "package": "bootstrap",
+      "version": "^5.3.3",
+      "binding": "_bootstrap",
+      "patterns": [
+        "/bootstrap.js",
+        "/bootstrap.min.js",
+        "/bootstrap.bundle",
+        "/bootstrap@",
+        "cdnjs.cloudflare.com/ajax/libs/bootstrap/",
+        "bootstrapcdn.com/bootstrap/",
+        "twitter.github.com/bootstrap/"
+      ]
+    },
+    {
+      "package": "select2",
+      "version": "^4.0.13",
+      "binding": "_select2",
+      "patterns": [
+        "select2"
+      ]
+    },
+    {
+      "package": "p5",
+      "version": "^1.11.2",
+      "binding": "p5",
+      "patterns": [
+        "p5.js",
+        "/p5@",
+        "/p5/",
+        "p5.dom",
+        "p5.sound",
+        "p5.latest"
+      ]
+    },
+    {
+      "package": "howler",
+      "version": "^2.2.4",
+      "binding": "Howler",
+      "patterns": [
+        "howler"
+      ]
+    },
+    {
+      "package": "tone",
+      "version": "^15.0.4",
+      "binding": "Tone",
+      "patterns": [
+        "tone.js",
+        "tonejs",
+        "/tone@"
+      ]
+    },
+    {
+      "package": "jquery.tmpl",
+      "version": "*",
+      "binding": "_jqtmpl",
+      "patterns": [
+        "jquery.templates",
+        "jquery.tmpl"
+      ]
+    },
+    {
+      "package": "sizzle",
+      "version": "*",
+      "binding": "Sizzle",
+      "patterns": [
+        "sizzle"
+      ]
+    },
+    {
+      "package": "velocity-animate",
+      "version": "*",
+      "binding": "Velocity",
+      "patterns": [
+        "velocity"
+      ]
+    },
+    {
+      "package": "fabric",
+      "version": "*",
+      "binding": "fabric",
+      "patterns": [
+        "fabric.js",
+        "/fabric@",
+        "/fabric/"
+      ]
+    },
+    {
+      "package": "modernizr",
+      "version": "*",
+      "binding": "Modernizr",
+      "patterns": [
+        "modernizr"
+      ]
+    },
+    {
+      "package": "chartist",
+      "version": "*",
+      "binding": "Chartist",
+      "patterns": [
+        "chartist"
+      ]
+    },
+    {
+      "package": "@polymer/polymer",
+      "version": "*",
+      "binding": "Polymer",
+      "patterns": [
+        "/polymer/",
+        "/polymer@"
+      ]
+    },
+    {
+      "package": "better-dom",
+      "version": "*",
+      "binding": "DOM",
+      "patterns": [
+        "better-dom"
+      ]
+    },
+    {
+      "package": "cash-dom",
+      "version": "*",
+      "binding": "_cash",
+      "patterns": [
+        "/cash@",
+        "/cash-dom",
+        "cdnjs.cloudflare.com/ajax/libs/cash/",
+        "cdn.jsdelivr.net/cash/"
+      ]
+    },
+    {
+      "package": "kinetic",
+      "version": "*",
+      "binding": "Kinetic",
+      "patterns": [
+        "kineticjs",
+        "kinetic.min.js",
+        "kinetic.js",
+        "/kinetic-v"
+      ]
+    },
+    {
+      "package": "qooxdoo",
+      "version": "*",
+      "binding": "qx",
+      "patterns": [
+        "qooxdoo"
+      ]
+    },
+    {
+      "package": "requirejs",
+      "version": "*",
+      "binding": "_requirejs",
+      "patterns": [
+        "require.js",
+        "requirejs"
+      ]
+    },
+    {
+      "package": "baconjs",
+      "version": "*",
+      "binding": "Bacon",
+      "patterns": [
+        "bacon.js",
+        "/baconjs"
+      ]
+    },
+    {
+      "package": "superagent",
+      "version": "*",
+      "binding": "superagent",
+      "patterns": [
+        "superagent"
+      ]
+    },
+    {
+      "package": "alasql",
+      "version": "*",
+      "binding": "alasql",
+      "patterns": [
+        "alasql"
+      ]
+    },
+    {
+      "package": "classnames",
+      "version": "*",
+      "binding": "classNames",
+      "patterns": [
+        "classnames"
+      ]
+    },
+    {
+      "package": "he",
+      "version": "*",
+      "binding": "he",
+      "patterns": [
+        "/he@",
+        "/npm/he/",
+        "/ajax/libs/he/"
+      ]
+    },
+    {
+      "package": "expr-eval",
+      "version": "*",
+      "binding": "exprEval",
+      "patterns": [
+        "expr-eval"
+      ]
+    },
+    {
+      "package": "@faker-js/faker",
+      "version": "*",
+      "binding": "faker",
+      "patterns": [
+        "faker"
+      ]
+    },
+    {
+      "package": "lossless-json",
+      "version": "*",
+      "binding": "LosslessJSON",
+      "patterns": [
+        "lossless-json"
+      ]
+    },
+    {
+      "package": "datejs",
+      "version": "*",
+      "binding": "_datejs",
+      "patterns": [
+        "datejs",
+        "date.js"
+      ]
+    },
+    {
+      "package": "globalize",
+      "version": "*",
+      "binding": "Globalize",
+      "patterns": [
+        "globalize"
+      ]
+    },
+    {
+      "package": "diff-match-patch",
+      "version": "*",
+      "binding": "DiffMatchPatch",
+      "patterns": [
+        "diff_match_patch",
+        "diff-match-patch"
+      ]
+    },
+    {
+      "package": "linkifyjs",
+      "version": "*",
+      "binding": "linkify",
+      "patterns": [
+        "linkifyjs",
+        "linkify-html"
+      ]
+    },
+    {
+      "package": "swig-templates",
+      "version": "*",
+      "binding": "swig",
+      "patterns": [
+        "/swig/",
+        "/swig@",
+        "swig-templates"
+      ]
+    },
+    {
+      "package": "markdown",
+      "version": "*",
+      "binding": "_markdownjs",
+      "patterns": [
+        "markdown.js"
+      ]
+    },
+    {
+      "package": "jquery.cookie",
+      "version": "*",
+      "binding": "_jqcookie",
+      "patterns": [
+        "jquery-cookie",
+        "jquery.cookie"
+      ]
+    },
+    {
+      "package": "jquery-mousewheel",
+      "version": "*",
+      "binding": "_jqmw",
+      "patterns": [
+        "jquery-mousewheel",
+        "jquery.mousewheel"
+      ]
+    },
+    {
+      "package": "jquery-validation",
+      "version": "*",
+      "binding": "_jqvalid",
+      "patterns": [
+        "jquery.validate",
+        "jquery-validation"
+      ]
+    },
+    {
+      "package": "morris.js",
+      "version": "*",
+      "binding": "Morris",
+      "patterns": [
+        "morris.js",
+        "morrisjs"
+      ]
+    },
+    {
+      "package": "isotope-layout",
+      "version": "*",
+      "binding": "Isotope",
+      "patterns": [
+        "jquery.isotope",
+        "isotope-layout",
+        "/isotope@"
+      ]
+    },
+    {
+      "package": "masonry-layout",
+      "version": "*",
+      "binding": "Masonry",
+      "patterns": [
+        "/masonry/",
+        "masonry-layout",
+        "/masonry@"
+      ]
+    },
+    {
+      "package": "packery",
+      "version": "*",
+      "binding": "Packery",
+      "patterns": [
+        "packery"
+      ]
+    },
+    {
+      "package": "snapsvg",
+      "version": "*",
+      "binding": "Snap",
+      "patterns": [
+        "snap.svg",
+        "snapsvg"
+      ]
+    },
+    {
+      "package": "flot",
+      "version": "*",
+      "binding": "_flot",
+      "patterns": [
+        "jquery.flot",
+        "/flot@",
+        "/flot/"
+      ]
+    },
+    {
+      "package": "bean",
+      "version": "*",
+      "binding": "bean",
+      "patterns": [
+        "/bean/",
+        "/bean@"
+      ]
+    },
+    {
+      "package": "qwery",
+      "version": "*",
+      "binding": "qwery",
+      "patterns": [
+        "/qwery/",
+        "/qwery@"
+      ]
+    },
+    {
+      "package": "domtastic",
+      "version": "*",
+      "binding": "_dom",
+      "patterns": [
+        "domtastic"
+      ]
+    },
+    {
+      "package": "msgpackr",
+      "version": "*",
+      "binding": "msgpackr",
+      "patterns": [
+        "msgpackr"
+      ]
+    },
+    {
+      "package": "@msgpack/msgpack",
+      "version": "*",
+      "binding": "MessagePack",
+      "patterns": [
+        "@msgpack/msgpack"
+      ]
+    },
+    {
+      "package": "msgpack-lite",
+      "version": "*",
+      "binding": "msgpack",
+      "patterns": [
+        "msgpack.js",
+        "msgpack.min.js",
+        "/msgpack/",
+        "/msgpack@",
+        "msgpack-lite"
+      ]
+    },
+    {
+      "package": "sha256-uint8array",
+      "version": "*",
+      "binding": "sha256Uint8Array",
+      "patterns": [
+        "sha256-uint8array"
+      ]
+    },
+    {
+      "package": "string-strip-html",
+      "version": "*",
+      "binding": "stringStripHtml",
+      "patterns": [
+        "string-strip-html"
+      ]
+    },
+    {
+      "package": "sval",
+      "version": "*",
+      "binding": "Sval",
+      "patterns": [
+        "/sval@",
+        "/sval/"
+      ]
+    },
+    {
+      "package": "xxhashjs",
+      "version": "*",
+      "binding": "XXH",
+      "patterns": [
+        "xxhashjs",
+        "xxhash"
+      ]
+    },
+    {
+      "package": "zod",
+      "version": "*",
+      "binding": "zod",
+      "patterns": [
+        "/zod@",
+        "/zod/"
+      ]
+    },
+    {
+      "package": "xregexp",
+      "version": "*",
+      "binding": "XRegExp",
+      "patterns": [
+        "xregexp"
+      ]
+    },
+    {
+      "package": "core-js",
+      "version": "*",
+      "binding": "_corejs",
+      "patterns": [
+        "core-js",
+        "/corejs/",
+        "/corejs@"
+      ]
+    },
+    {
+      "package": "core-js-bundle",
+      "version": "*",
+      "binding": "_corejsbundle",
+      "patterns": [
+        "core-js-bundle"
+      ]
+    },
+    {
+      "package": "buffer",
+      "version": "*",
+      "binding": "BufferModule",
+      "patterns": [
+        "/buffer@",
+        "/ajax/libs/buffer/"
+      ]
+    },
+    {
+      "package": "commonmark",
+      "version": "*",
+      "binding": "commonmark",
+      "patterns": [
+        "commonmark"
+      ]
+    },
+    {
+      "package": "crossroads",
+      "version": "*",
+      "binding": "crossroads",
+      "patterns": [
+        "crossroads"
+      ]
+    },
+    {
+      "package": "js-sha3",
+      "version": "*",
+      "binding": "sha3",
+      "patterns": [
+        "js-sha3"
+      ]
+    },
+    {
+      "package": "js-sha256",
+      "version": "*",
+      "binding": "sha256",
+      "patterns": [
+        "js-sha256"
+      ]
+    },
+    {
+      "package": "sha256",
+      "version": "*",
+      "binding": "sha256",
+      "patterns": [
+        "/sha256.js",
+        "/sha256.min.js",
+        "/sha-256.js"
+      ]
+    },
+    {
+      "package": "js-sha1",
+      "version": "*",
+      "binding": "sha1",
+      "patterns": [
+        "js-sha1"
+      ]
+    },
+    {
+      "package": "sha1",
+      "version": "*",
+      "binding": "sha1",
+      "patterns": [
+        "/sha1.js",
+        "/sha1.min.js"
+      ]
+    },
+    {
+      "package": "js-md5",
+      "version": "*",
+      "binding": "md5",
+      "patterns": [
+        "js-md5"
+      ]
+    },
+    {
+      "package": "md5",
+      "version": "*",
+      "binding": "md5",
+      "patterns": [
+        "/md5.js",
+        "/md5.min.js",
+        "/md5@",
+        "/blueimp-md5"
+      ]
+    },
+    {
+      "package": "js-base64",
+      "version": "*",
+      "binding": "Base64",
+      "patterns": [
+        "js-base64",
+        "/base64.js",
+        "/base64.min.js"
+      ]
+    },
+    {
+      "package": "js-signals",
+      "version": "*",
+      "binding": "signals",
+      "patterns": [
+        "js-signals"
+      ]
+    },
+    {
+      "package": "murmurhash3js",
+      "version": "*",
+      "binding": "murmurhash3js",
+      "patterns": [
+        "murmurhash3js"
+      ]
+    },
+    {
+      "package": "pagedown",
+      "version": "*",
+      "binding": "Markdown",
+      "patterns": [
+        "pagedown"
+      ]
+    },
+    {
+      "package": "postal",
+      "version": "*",
+      "binding": "postal",
+      "patterns": [
+        "postal.js",
+        "/postal/",
+        "/postal@"
+      ]
+    },
+    {
+      "package": "spark-md5",
+      "version": "*",
+      "binding": "SparkMD5",
+      "patterns": [
+        "spark-md5"
+      ]
+    },
+    {
+      "package": "sylvester",
+      "version": "*",
+      "binding": "Sylvester",
+      "patterns": [
+        "sylvester"
+      ]
+    },
+    {
+      "package": "twig",
+      "version": "*",
+      "binding": "Twig",
+      "patterns": [
+        "twig.js",
+        "/twig@",
+        "/twig/"
+      ]
+    },
+    {
+      "package": "vectorious",
+      "version": "*",
+      "binding": "vectorious",
+      "patterns": [
+        "vectorious"
+      ]
+    },
+    {
+      "package": "axios",
+      "version": "*",
+      "binding": "axios",
+      "patterns": [
+        "axios"
+      ]
+    },
+    {
+      "package": "immer",
+      "version": "*",
+      "binding": "immer",
+      "patterns": [
+        "/immer@",
+        "/immer/"
+      ]
+    },
+    {
+      "package": "mitt",
+      "version": "*",
+      "binding": "mitt",
+      "patterns": [
+        "/mitt/",
+        "/mitt@"
+      ]
+    },
+    {
+      "package": "mobx",
+      "version": "*",
+      "binding": "mobx",
+      "patterns": [
+        "/mobx/",
+        "/mobx@"
+      ]
+    },
+    {
+      "package": "object-hash",
+      "version": "*",
+      "binding": "objectHash",
+      "patterns": [
+        "object-hash",
+        "object_hash"
+      ]
+    },
+    {
+      "package": "redux",
+      "version": "*",
+      "binding": "Redux",
+      "patterns": [
+        "/redux/",
+        "/redux@"
+      ]
+    },
+    {
+      "package": "page",
+      "version": "*",
+      "binding": "page",
+      "patterns": [
+        "page.js"
+      ]
+    },
+    {
+      "package": "dompurify",
+      "version": "*",
+      "binding": "DOMPurify",
+      "patterns": [
+        "dompurify"
+      ]
+    },
+    {
+      "package": "dygraphs",
+      "version": "*",
+      "binding": "Dygraph",
+      "patterns": [
+        "dygraph"
+      ]
+    },
+    {
+      "package": "styled-components",
+      "version": "*",
+      "binding": "styled",
+      "patterns": [
+        "styled-components"
+      ]
+    },
+    {
+      "package": "waypoints",
+      "version": "*",
+      "binding": "Waypoint",
+      "patterns": [
+        "waypoints"
+      ]
+    },
+    {
+      "package": "document-register-element",
+      "version": "*",
+      "binding": "_dre",
+      "patterns": [
+        "document-register-element"
+      ]
+    },
+    {
+      "package": "uhtml",
+      "version": "*",
+      "binding": "uhtml",
+      "patterns": [
+        "/uhtml@",
+        "unpkg.com/uhtml"
+      ]
+    },
+    {
+      "package": "katex",
+      "version": "*",
+      "binding": "katex",
+      "patterns": [
+        "katex"
+      ]
+    },
+    {
+      "package": "@progress/kendo-ui",
+      "version": "*",
+      "binding": "kendo",
+      "patterns": [
+        "kendo-ui-core",
+        "kendo"
+      ]
+    },
+    {
+      "package": "jquery.transit",
+      "version": "*",
+      "binding": "_jqtransit",
+      "patterns": [
+        "jquery.transit"
+      ]
+    },
+    {
+      "package": "quicksand",
+      "version": "*",
+      "binding": "_quicksand",
+      "patterns": [
+        "quicksand"
+      ]
+    },
+    {
+      "package": "@svgdotjs/svg.js",
+      "version": "*",
+      "binding": "SVG",
+      "patterns": [
+        "svg.js"
+      ]
+    },
+    {
+      "package": "director",
+      "version": "*",
+      "binding": "Director",
+      "patterns": [
+        "director"
+      ]
+    },
+    {
+      "package": "icanhaz",
+      "version": "*",
+      "binding": "ich",
+      "patterns": [
+        "icanhaz.js",
+        "icanhaz"
+      ]
+    },
+    {
+      "package": "amplifyjs",
+      "version": "*",
+      "binding": "amplify",
+      "patterns": [
+        "amplifyjs",
+        "amplify"
+      ]
+    },
+    {
+      "package": "yui",
+      "version": "*",
+      "binding": "_yuimod",
+      "patterns": [
+        "/ajax/libs/yui/",
+        "yui.yahooapis"
+      ]
+    },
+    {
+      "package": "json2",
+      "version": "*",
+      "binding": "_json2",
+      "patterns": [
+        "/ajax/libs/json2/",
+        "/json2/",
+        "json2.min.js"
+      ]
+    },
+    {
+      "package": "swfobject",
+      "version": "*",
+      "binding": "swfobject",
+      "patterns": [
+        "swfobject"
+      ]
+    },
+    {
+      "package": "bigfloat",
+      "version": "*",
+      "binding": "bigfloat",
+      "patterns": [
+        "/bigfloat@"
+      ]
+    },
+    {
+      "package": "double.js",
+      "version": "*",
+      "binding": "Double",
+      "patterns": [
+        "/double.js@"
+      ]
+    },
+    {
+      "package": "jsonh",
+      "version": "*",
+      "binding": "JSONH",
+      "patterns": [
+        "jsonh"
+      ]
+    },
+    {
+      "package": "dom-node-template",
+      "version": "*",
+      "binding": "domNodeTemplate",
+      "patterns": [
+        "dom-node-template"
+      ]
+    },
+    {
+      "package": "elm-debug-transformer",
+      "version": "*",
+      "binding": "_elmDebug",
+      "patterns": [
+        "elm-debug-transformer"
+      ]
+    },
+    {
+      "package": "ut2",
+      "version": "*",
+      "binding": "ut2",
+      "patterns": [
+        "/ut2@",
+        "/ut2/"
+      ]
+    },
+    {
+      "package": "quojs",
+      "version": "*",
+      "binding": "$$",
+      "patterns": [
+        "quo.js",
+        "quojs"
+      ]
+    },
+    {
+      "package": "unveil.js",
+      "version": "*",
+      "binding": "_unveil",
+      "patterns": [
+        "/unveil/",
+        "jquery.unveil"
+      ]
+    },
+    {
+      "package": "maskjs",
+      "version": "*",
+      "binding": "mask",
+      "patterns": [
+        "maskjs",
+        "mask.js"
+      ]
+    },
+    {
+      "package": "radio",
+      "version": "*",
+      "binding": "radio",
+      "patterns": [
+        "/ajax/libs/radio/"
+      ]
+    },
+    {
+      "package": "wookmark",
+      "version": "*",
+      "binding": "Wookmark",
+      "patterns": [
+        "jquery.wookmark",
+        "wookmark"
+      ]
+    },
+    {
+      "package": "carousel",
+      "version": "*",
+      "binding": "_carousel",
+      "patterns": [
+        "jquery.caroufredsel",
+        "caroufredsel"
+      ]
+    },
+    {
+      "package": "dot",
+      "version": "*",
+      "binding": "doT",
+      "patterns": [
+        "/dot@",
+        "/dot.js",
+        "/dot.min.js",
+        "/doT.js",
+        "/dot/"
+      ]
+    },
+    {
+      "package": "ejs",
+      "version": "*",
+      "binding": "ejs",
+      "patterns": [
+        "/ejs@",
+        "/ejs/",
+        "/ejs.js",
+        "/ejs.min.js",
+        "ejs_production"
+      ]
+    },
+    {
+      "package": "jsrender",
+      "version": "*",
+      "binding": "$jsr",
+      "patterns": [
+        "jsrender"
+      ]
+    },
+    {
+      "package": "setimmediate",
+      "version": "*",
+      "binding": "_setImmediate",
+      "patterns": [
+        "setimmediate"
+      ]
+    },
+    {
+      "package": "mersenne-twister",
+      "version": "*",
+      "binding": "MersenneTwister",
+      "patterns": [
+        "mersenne-twister",
+        "mersennetwister"
+      ]
+    },
+    {
+      "package": "jsbn",
+      "version": "*",
+      "binding": "_jsbn",
+      "patterns": [
+        "/jsbn/",
+        "/jsbn@",
+        "jsbn.js",
+        "jsbn2.js"
+      ]
+    },
+    {
+      "package": "ractive",
+      "version": "*",
+      "binding": "Ractive",
+      "patterns": [
+        "/ractive/",
+        "/ractive@",
+        "ractive.js",
+        "ractive.min.js",
+        "ractivejs"
+      ]
+    },
+    {
+      "package": "taffy",
+      "version": "*",
+      "binding": "TAFFY",
+      "patterns": [
+        "taffy.js",
+        "taffydb"
+      ]
+    },
+    {
+      "package": "utf8",
+      "version": "*",
+      "binding": "utf8",
+      "patterns": [
+        "/utf8@",
+        "/utf8.js",
+        "/utf8.min.js",
+        "/utf8/"
+      ]
+    },
+    {
+      "package": "hamljs",
+      "version": "*",
+      "binding": "haml",
+      "patterns": [
+        "/haml.js",
+        "hamljs"
+      ]
+    },
+    {
+      "package": "jsface",
+      "version": "*",
+      "binding": "jsface",
+      "patterns": [
+        "/jsface/",
+        "/jsface@",
+        "jsface.js"
+      ]
+    },
+    {
+      "package": "poly2tri",
+      "version": "*",
+      "binding": "poly2tri",
+      "patterns": [
+        "poly2tri"
+      ]
+    },
+    {
+      "package": "numeral",
+      "version": "*",
+      "binding": "numeral",
+      "patterns": [
+        "/numeral@",
+        "/numeral/",
+        "numeral.js",
+        "numeral.min.js",
+        "numeraljs"
+      ]
+    },
+    {
+      "package": "pubsub-js",
+      "version": "*",
+      "binding": "PubSub",
+      "patterns": [
+        "pubsub"
+      ]
+    },
+    {
+      "package": "transducers.js",
+      "version": "*",
+      "binding": "transducers",
+      "patterns": [
+        "transducers.js"
+      ]
+    },
+    {
+      "package": "blockui",
+      "version": "*",
+      "binding": "_blockui",
+      "patterns": [
+        "blockui",
+        "jquery.blockui"
+      ]
+    },
+    {
+      "package": "jquery.easing",
+      "version": "*",
+      "binding": "_jqeasing",
+      "patterns": [
+        "jquery.easing"
+      ]
+    },
+    {
+      "package": "benchmark",
+      "version": "^2.1.4",
+      "binding": "Benchmark",
+      "patterns": [
+        "/benchmark.js",
+        "/benchmark.min.js",
+        "/npm/benchmark@",
+        "cdnjs.cloudflare.com/ajax/libs/benchmark",
+        "/benchmarkjs-",
+        "benchmarkjs.com"
+      ]
+    },
+    {
+      "package": "lazy.js",
+      "version": "*",
+      "binding": "Lazy",
+      "patterns": [
+        "dtao/lazy.js",
+        "/lazy.js",
+        "/lazy.min.js"
+      ]
+    },
+    {
+      "package": "numeric",
+      "version": "*",
+      "binding": "numeric",
+      "patterns": [
+        "numericjs.com",
+        "/numeric-1.",
+        "/numeric.js"
+      ]
+    },
+    {
+      "package": "protobufjs",
+      "version": "*",
+      "binding": "protobuf",
+      "patterns": [
+        "dcodeio/protobuf.js",
+        "/protobuf.js",
+        "protobuf.min.js"
+      ]
+    },
+    {
+      "package": "bytebuffer",
+      "version": "*",
+      "binding": "ByteBuffer",
+      "patterns": [
+        "bytebuffer.min.js",
+        "bytebuffer.js"
+      ]
+    },
+    {
+      "package": "bison",
+      "version": "*",
+      "binding": "BISON",
+      "patterns": [
+        "/bison.js",
+        "bison.min.js"
+      ]
+    },
+    {
+      "package": "catiline",
+      "version": "*",
+      "binding": "catiline",
+      "patterns": [
+        "catiline"
+      ]
+    },
+    {
+      "package": "zest",
+      "version": "*",
+      "binding": "zest",
+      "patterns": [
+        "/zest.js",
+        "zest.min.js",
+        "/zest/"
+      ]
+    },
+    {
+      "package": "weld",
+      "version": "*",
+      "binding": "weld",
+      "patterns": [
+        "/weld.js",
+        "weld.min.js"
+      ]
+    },
+    {
+      "package": "pure",
+      "version": "*",
+      "binding": "$p",
+      "patterns": [
+        "/pure.js",
+        "pure.min.js",
+        "beebole"
+      ]
+    },
+    {
+      "package": "chui",
+      "version": "*",
+      "binding": "_chui",
+      "patterns": [
+        "chocolatechip"
+      ]
+    },
+    {
+      "package": "es6-promise",
+      "version": "*",
+      "binding": "ES6Promise",
+      "patterns": [
+        "es6-promises/promise-",
+        "es6-promise"
+      ]
+    },
+    {
+      "package": "can",
+      "version": "*",
+      "binding": "can",
+      "patterns": [
+        "can.jquery"
+      ]
+    }
+  ]
+}
