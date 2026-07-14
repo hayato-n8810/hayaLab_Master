@@ -12,6 +12,7 @@ from bs4 import BeautifulSoup
 
 _PARSER: str = "html.parser"
 _WRAPPER_TAGS: frozenset[str] = frozenset({"html", "head", "body", "[document]"})
+_EXECUTABLE_SCRIPT_TYPES: frozenset[str] = frozenset({"", "text/javascript", "application/javascript", "application/ecmascript", "text/ecmascript", "module"})
 
 PreparationCategory = Literal["empty", "inline_only", "external_only", "with_dom"]
 
@@ -28,8 +29,28 @@ def _parse(html: str) -> BeautifulSoup:
     return BeautifulSoup(html or "", _PARSER)
 
 
+def _is_executable_script(tag) -> bool:
+    """`<script>` タグがブラウザに JavaScript として実行されるかを type 属性で判定する。
+
+    `text/template` 等の非 JS type はブラウザが実行しないデータブロック。
+
+    Args:
+        tag: BeautifulSoup の `<script>` タグ。
+
+    Returns:
+        bool: JavaScript として実行される type なら True。
+    """
+    type_attr = tag.get("type")
+    if not isinstance(type_attr, str):
+        return True
+    return type_attr.strip().lower() in _EXECUTABLE_SCRIPT_TYPES
+
+
 def extract_inline_scripts(html: str) -> list[str]:
-    """インライン `<script>`（`src` 属性を持たないもの）の中身を DOM 順に返す。
+    """実行対象のインライン `<script>` の中身を DOM 順に返す。
+
+    `src` 属性を持つもの、および非 JS type（`text/template` 等）のデータブロックは
+    抽出しない。
 
     Args:
         html: preparation_html の生文字列。
@@ -40,7 +61,7 @@ def extract_inline_scripts(html: str) -> list[str]:
     soup = _parse(html)
     scripts: list[str] = []
     for tag in soup.find_all("script"):
-        if tag.has_attr("src"):
+        if tag.has_attr("src") or not _is_executable_script(tag):
             continue
         scripts.append(tag.decode_contents())
     return scripts
@@ -67,37 +88,41 @@ def extract_external_script_srcs(html: str) -> list[str]:
 
 
 def strip_inline_scripts(html: str) -> str:
-    """インライン `<script>` タグだけを除去した HTML を返す。
+    """実行対象のインライン `<script>` タグだけを除去した HTML を返す。
 
-    外部 `<script src>` と DOM 要素は残す。
+    外部 `<script src>`、DOM 要素、および非 JS type（`text/template` 等）の
+    データブロック script は残す（DOM 経由で参照されるコンテンツのため）。
 
     Args:
         html: preparation_html の生文字列。
 
     Returns:
-        str: インライン `<script>` を除いた HTML 文字列。
+        str: 実行対象のインライン `<script>` を除いた HTML 文字列。
     """
     soup = _parse(html)
     for tag in soup.find_all("script"):
-        if not tag.has_attr("src"):
+        if not tag.has_attr("src") and _is_executable_script(tag):
             tag.decompose()
     return str(soup)
 
 
 def has_dom_elements(html: str) -> bool:
-    """HTML に `<script>` 以外の DOM 要素が含まれるか判定する。
+    """HTML に DOM コンテンツが含まれるか判定する。
+
+    実行対象の `<script>`（JS type）は除いて判定する。非 JS type の
+    データブロック script は DOM 経由で参照されるコンテンツとして数える。
 
     Args:
         html: 判定対象の HTML 文字列。
 
     Returns:
-        bool: `<script>` 以外のタグが 1 つでもあれば True。
+        bool: DOM コンテンツとなるタグが 1 つでもあれば True。
     """
     soup = _parse(html)
     for tag in soup.find_all(True):
         if tag.name in _WRAPPER_TAGS:
             continue
-        if tag.name == "script":
+        if tag.name == "script" and (tag.has_attr("src") or _is_executable_script(tag)):
             continue
         return True
     return False
