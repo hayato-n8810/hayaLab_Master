@@ -24,8 +24,16 @@ program 実行中の例外はハーネスが window.__bench_error に格納す�
 成功判定: ページロード完了 → __bench_done 到達 → settle 待機の間に
 __bench_error / pageerror / console.error / 外部 script 取得失敗 がゼロであること。
 
+並列実行は worker ごとに独立した playwright driver + browser + 専用 HTTP ポート
+(DEFAULT_PORT + worker index) を持つ。HTML ごとに BrowserContext を作り直すため、
+同一オリジンの localStorage / IndexedDB / cookie が前のテストから漏れない。
+driver/browser プロセスが死亡した場合 (console 洪水ページ等が原因) は、その時点の
+job を DriverCrashed として記録し、当該 worker の driver/browser だけを再起動して
+残りの job を続行する (他 worker は影響を受けない)。
+
 error_type (原因志向の優先順位):
     LoadFailed > Timeout > ScriptLoadFailed > PageError > ConsoleError
+driver/browser 死亡に巻き込まれ結果を取得できなかった job は DriverCrashed。
 
 入力:
 - `outputs/jsperf/setup/step1/<slug_id>/(page_html.html, program_<i>.js, meta.json)`
@@ -34,15 +42,20 @@ error_type (原因志向の優先順位):
 出力: `outputs/jsperf/setup/step4/`
 - `benchmark/<slug_id>/bench_<i>.html`: 実行用 HTML ラッパ
 - `benchmark/<slug_id>/program_<i>.js`: step1 からの無加工コピー (実行された実体)
-- `results.jsonl`: per-test 実行結果 (status, error_type, error_head, program_error, failed_requests, elapsed)
+- `results.jsonl`: per-test 実行結果 (status, error_type, error_head, program_error, failed_requests, elapsed)。
+  実行中は完了順に逐次追記する (リトライ分は同一キーの重複行として追記)。実行終了後に
+  同一 (slug_id, test_idx) を後勝ちでデデュープし (slug_id, test_idx) ソートした確定版を書き戻す
 - `tags.jsonl`: 全 program のタグ (node_success / npm_success / playwright_success を独立保持)
 - `summary.json`: 集計 (error_type 内訳、benchmark 単位、失敗 script URL ホスト別上位)
+
+tags.jsonl / summary.json は確定版 results.jsonl をファイルから読み直して生成する。
 """
 
 from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import shutil
 import threading
 import time
@@ -58,7 +71,7 @@ import hayalab
 from hayalab.config import PathConfig
 
 # --- Constants ------------------------------------------------------
-DEFAULT_MAX_WORKERS: int = 25
+DEFAULT_MAX_WORKERS: int = 15
 DEFAULT_PAGE_TIMEOUT_MS: int = 30_000
 DEFAULT_SETTLE_MS: int = 500
 DEFAULT_PORT: int = 8437
@@ -68,6 +81,7 @@ ERROR_TYPE_KEYS: tuple[str, ...] = (
     "ScriptLoadFailed",
     "PageError",
     "ConsoleError",
+    "DriverCrashed",
 )
 
 
@@ -126,7 +140,7 @@ async def _run_bench_page(context, url: str, timeout_ms: int, settle_ms: int) ->
     """1 つの bench HTML を新規ページで実行し、結果を分類する per-record worker.
 
     Args:
-        context: Playwright BrowserContext (worker 内で共有し HTTP キャッシュを効かせる).
+        context: Playwright BrowserContext (HTML ごとに作り直され storage を共有しない).
         url: bench HTML の URL.
         timeout_ms: goto + マーカー待ちのタイムアウト.
         settle_ms: マーカー到達後にエラーを回収する待機時間.
@@ -202,9 +216,15 @@ async def _run_bench_page(context, url: str, timeout_ms: int, settle_ms: int) ->
     }
 
 
-async def _worker(browser, queue: asyncio.Queue, results: list[dict], base_url: str, timeout_ms: int, settle_ms: int) -> None:
-    """Queue から job を取り出して実行し続ける worker (1 worker = 1 BrowserContext)."""
-    context = await browser.new_context()
+async def _worker(queue: asyncio.Queue, results: list[dict], out_fp, base_url: str, timeout_ms: int, settle_ms: int) -> None:
+    """Queue から job を取り出して実行し、結果を out_fp へ逐次追記する worker.
+
+    1 worker が独立した playwright driver + browser + 専用ポート (base_url) を持ち、
+    HTML ごとに BrowserContext を作り直す。driver/browser 死亡を検知した場合は当該
+    job を DriverCrashed として記録し、自分の driver/browser だけを再起動して続行する。
+    """
+    pw = await async_playwright().start()
+    browser = await pw.chromium.launch(headless=True)
     try:
         while True:
             job = await queue.get()
@@ -212,37 +232,80 @@ async def _worker(browser, queue: asyncio.Queue, results: list[dict], base_url: 
                 queue.task_done()
                 break
             slug_id, slug, test_idx, html_rel = job
-            res = await _run_bench_page(context, f"{base_url}/{html_rel}", timeout_ms, settle_ms)
-            results.append(
-                {
-                    "slug_id": slug_id,
-                    "slug": slug,
-                    "test_idx": test_idx,
-                    "path": html_rel,
-                    **res,
+            try:
+                context = await browser.new_context()
+                try:
+                    res = await _run_bench_page(context, f"{base_url}/{html_rel}", timeout_ms, settle_ms)
+                finally:
+                    await context.close()
+            except Exception as exc:
+                # driver 突然死は browser.is_connected() に反映されないことがあるため、
+                # 新規 context を開けるかの実プローブで生死を確定判定する
+                disconnected = not browser.is_connected()
+                if not disconnected:
+                    try:
+                        probe = await browser.new_context()
+                        await probe.close()
+                    except Exception:
+                        disconnected = True
+                res = {
+                    "status": "error",
+                    "error_type": "DriverCrashed" if disconnected else "LoadFailed",
+                    "error_head": str(exc)[:300],
+                    "program_error": False,
+                    "failed_requests": [],
+                    "n_console_errors": 0,
+                    "elapsed": 0.0,
                 }
-            )
+                if disconnected:
+                    # 死亡した driver/browser は close 不能のため失敗は無視する
+                    try:
+                        await browser.close()
+                    except Exception:
+                        pass
+                    try:
+                        await pw.stop()
+                    except Exception:
+                        pass
+                    pw = await async_playwright().start()
+                    browser = await pw.chromium.launch(headless=True)
+                    print(f"[step4] worker driver crashed; relaunched ({slug_id}/bench_{test_idx} marked DriverCrashed)")
+            rec = {
+                "slug_id": slug_id,
+                "slug": slug,
+                "test_idx": test_idx,
+                "path": html_rel,
+                **res,
+            }
+            results.append(rec)
+            out_fp.write(json.dumps(rec, ensure_ascii=False) + "\n")
+            out_fp.flush()
             done = len(results)
             if done % 50 == 0:
                 print(f"[step4] progress: {done} pages done")
             queue.task_done()
     finally:
-        await context.close()
+        # driver/browser 死亡後は close 不能のため失敗は無視する
+        try:
+            await browser.close()
+        except Exception:
+            pass
+        try:
+            await pw.stop()
+        except Exception:
+            pass
 
 
-async def _run_all(jobs: list[tuple], base_url: str, max_workers: int, timeout_ms: int, settle_ms: int) -> list[dict]:
-    """全 job を max_workers 並列で実行する (呼び出し 2 回: 本実行 + リトライ)."""
+async def _run_all(jobs: list[tuple], base_urls: list[str], timeout_ms: int, settle_ms: int, out_fp) -> list[dict]:
+    """全 job を worker 数 (= len(base_urls)) 並列で実行し out_fp へ逐次追記する (呼び出し 2 回: 本実行 + リトライ)."""
     results: list[dict] = []
-    async with async_playwright() as pw:
-        browser = await pw.chromium.launch(headless=True)
-        queue: asyncio.Queue = asyncio.Queue()
-        for j in jobs:
-            queue.put_nowait(j)
-        for _ in range(max_workers):
-            queue.put_nowait(None)
-        workers = [asyncio.create_task(_worker(browser, queue, results, base_url, timeout_ms, settle_ms)) for _ in range(max_workers)]
-        await asyncio.gather(*workers)
-        await browser.close()
+    queue: asyncio.Queue = asyncio.Queue()
+    for j in jobs:
+        queue.put_nowait(j)
+    for _ in range(len(base_urls)):
+        queue.put_nowait(None)
+    workers = [asyncio.create_task(_worker(queue, results, out_fp, url, timeout_ms, settle_ms)) for url in base_urls]
+    await asyncio.gather(*workers)
     return results
 
 
@@ -251,9 +314,6 @@ if __name__ == "__main__":
     # --- Section 1: 引数パース ---
     parser = argparse.ArgumentParser(description="Step4: Playwright execution for non-Node benchmarks.")
     parser.add_argument("--max-workers", type=int, default=DEFAULT_MAX_WORKERS)
-    parser.add_argument("--timeout", type=int, default=DEFAULT_PAGE_TIMEOUT_MS, help="per-page timeout (ms)")
-    parser.add_argument("--settle", type=int, default=DEFAULT_SETTLE_MS, help="post-done settle wait (ms)")
-    parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     parser.add_argument(
         "--coep",
         choices=["credentialless", "require-corp", "none"],
@@ -283,6 +343,7 @@ if __name__ == "__main__":
     for t in step3_tags:
         bench_tags[t["slug_id"]].append(t)
 
+    # ベンチマーク単位で node/npm 成功が 1 つも無いベンチマークが対象
     target_slug_ids: list[str] = sorted(slug_id for slug_id, recs in bench_tags.items() if not all(r.get("node_success", False) or r.get("npm_success", False) for r in recs))
     print(f"[step4] benchmarks total:          {len(bench_tags)}")
     print(f"[step4] target (not node-capable): {len(target_slug_ids)}")
@@ -321,39 +382,39 @@ if __name__ == "__main__":
     print(f"[step4] skipped (no program js):   {skipped_no_program}")
     print(f"[step4] pages to run:              {len(jobs)}")
 
-    # --- Section 5: ローカル HTTP サーバ起動 (docroot = step4 出力ディレクトリ) ---
+    # --- Section 5: ローカル HTTP サーバ起動 (worker ごとに 1 ポート; docroot = step4 出力ディレクトリ) ---
     _CoepHandler.coep_mode = args.coep
     handler = partial(_CoepHandler, directory=str(STEP4_OUT))
-    httpd = ThreadingHTTPServer(("127.0.0.1", args.port), handler)
-    server_thread = threading.Thread(target=httpd.serve_forever, daemon=True)
-    server_thread.start()
-    base_url = f"http://127.0.0.1:{args.port}"
-    print(f"[step4] http server: {base_url}  (docroot={STEP4_OUT}, coep={args.coep})")
+    httpds: list[ThreadingHTTPServer] = []
+    base_urls: list[str] = []
+    for i in range(args.max_workers):
+        httpd = ThreadingHTTPServer(("127.0.0.1", DEFAULT_PORT + i), handler)
+        threading.Thread(target=httpd.serve_forever, daemon=True).start()
+        httpds.append(httpd)
+        base_urls.append(f"http://127.0.0.1:{DEFAULT_PORT + i}")
+    print(f"[step4] http servers: {base_urls[0]} .. {base_urls[-1]} (n={args.max_workers}, docroot={STEP4_OUT}, coep={args.coep})")
 
-    # --- Section 6: Playwright 実行 (本実行 + fail のみ 1 回リトライ) ---
+    # --- Section 6: Playwright 実行 (results.jsonl へ逐次追記; driver 死亡は worker 単位で再起動; fail のみ 1 回リトライ) ---
+    results_path = STEP4_OUT / "results.jsonl"
     start = time.perf_counter()
-    results: list[dict] = asyncio.run(_run_all(jobs, base_url, args.max_workers, args.timeout, args.settle))
+    with open(results_path, "w", encoding="utf-8") as results_fp:
+        results: list[dict] = asyncio.run(_run_all(jobs, base_urls, DEFAULT_PAGE_TIMEOUT_MS, DEFAULT_SETTLE_MS, results_fp))
 
-    failed_jobs = [(r["slug_id"], r["slug"], r["test_idx"], r["path"]) for r in results if r["status"] != "success"]
-    if failed_jobs:
-        print(f"[step4] retrying {len(failed_jobs)} failed pages once...")
-        retry_results = asyncio.run(_run_all(failed_jobs, base_url, args.max_workers, args.timeout, args.settle))
-        retry_map = {(r["slug_id"], r["test_idx"]): r for r in retry_results}
-        merged: list[dict] = []
-        for r in results:
-            key = (r["slug_id"], r["test_idx"])
-            if r["status"] != "success" and key in retry_map and retry_map[key]["status"] == "success":
-                merged.append(retry_map[key])
-            else:
-                merged.append(r)
-        results = merged
+        failed_jobs = [(r["slug_id"], r["slug"], r["test_idx"], r["path"]) for r in results if r["status"] != "success"]
+        if failed_jobs:
+            print(f"[step4] retrying {len(failed_jobs)} failed pages once...")
+            asyncio.run(_run_all(failed_jobs, base_urls, DEFAULT_PAGE_TIMEOUT_MS, DEFAULT_SETTLE_MS, results_fp))
 
     elapsed_sec = time.perf_counter() - start
-    httpd.shutdown()
-    results.sort(key=lambda x: (x["slug_id"], x["test_idx"]))
+    for httpd in httpds:
+        httpd.shutdown()
 
-    # --- Section 7: results.jsonl / tags.jsonl 書き出し ---
-    hayalab.write_jsonl(STEP4_OUT / "results.jsonl", results)
+    # --- Section 7: 確定版 results.jsonl (後者の実行結果を優先 + ソート) / tags.jsonl 書き出し ---
+    dedup: dict[tuple[str, int], dict] = {}
+    for r in hayalab.read_jsonl(results_path):
+        dedup[(r["slug_id"], r["test_idx"])] = r
+    results = sorted(dedup.values(), key=lambda x: (x["slug_id"], x["test_idx"]))
+    hayalab.write_jsonl(results_path, results)
 
     pw_success: set[tuple[str, int]] = {(r["slug_id"], r["test_idx"]) for r in results if r["status"] == "success"}
     tags_out: list[dict] = []
@@ -396,7 +457,8 @@ if __name__ == "__main__":
         "elapsed_sec": elapsed_sec,
         "max_workers": args.max_workers,
         "coep_mode": args.coep,
-        "page_timeout_ms": args.timeout,
+        "page_timeout_ms": DEFAULT_PAGE_TIMEOUT_MS,
+        "settle_ms": DEFAULT_SETTLE_MS,
         "benchmarks_total": len(bench_tags),
         "target_benchmarks": len(target_slug_ids),
         "skipped_no_step1": skipped_no_step1,
