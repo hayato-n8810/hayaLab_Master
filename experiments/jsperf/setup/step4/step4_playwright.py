@@ -326,14 +326,14 @@ if __name__ == "__main__":
     # --- Section 2: パス解決 ---
     CONFIG = PathConfig()
     SETUP_ROOT: Path = CONFIG.outputs / "jsperf" / "setup"
-    STEP1_DIR: Path = SETUP_ROOT / "step1"
+    STEP1_BENCH: Path = SETUP_ROOT / "step1" / "benchmark"
     STEP3_TAGS: Path = SETUP_ROOT / "step3" / "tags.jsonl"
     STEP4_OUT: Path = SETUP_ROOT / "step4"
     STEP4_BENCH: Path = STEP4_OUT / "benchmark"
     STEP4_OUT.mkdir(parents=True, exist_ok=True)
     STEP4_BENCH.mkdir(parents=True, exist_ok=True)
 
-    for p in (STEP1_DIR, STEP3_TAGS):
+    for p in (STEP1_BENCH, STEP3_TAGS):
         if not p.exists():
             raise SystemExit(f"missing input: {p}")
 
@@ -351,7 +351,7 @@ if __name__ == "__main__":
     skipped_no_step1: int = 0
     available_slug_ids: list[str] = []
     for slug_id in target_slug_ids:
-        if (STEP1_DIR / slug_id).is_dir():
+        if (STEP1_BENCH / slug_id).is_dir():
             available_slug_ids.append(slug_id)
         else:
             skipped_no_step1 += 1
@@ -364,11 +364,11 @@ if __name__ == "__main__":
     jobs: list[tuple[str, str, int, str]] = []
     skipped_no_program: int = 0
     for slug_id in available_slug_ids:
-        page_html_path = STEP1_DIR / slug_id / "page_html.html"
+        page_html_path = STEP1_BENCH / slug_id / "page_html.html"
         page_html: str = page_html_path.read_text(encoding="utf-8") if page_html_path.exists() else ""
         for rec in sorted(bench_tags[slug_id], key=lambda r: r["test_idx"]):
             test_idx: int = rec["test_idx"]
-            src_program = STEP1_DIR / slug_id / f"program_{test_idx}.js"
+            src_program = STEP1_BENCH / slug_id / f"program_{test_idx}.js"
             if not src_program.exists():
                 skipped_no_program += 1
                 continue

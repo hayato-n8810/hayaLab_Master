@@ -17,7 +17,7 @@ from hayalab.config import PathConfig
 from hayalab.utils.file.exec import classify_node_error, run_node
 
 # --- Constants ------------------------------------------------------
-MAX_WORKERS: int = 25
+MAX_WORKERS: int = 20
 NODE_BIN: str = "node"
 TIMEOUT: float = 180.0  # seconds
 ERROR_TYPE_KEYS: tuple[str, ...] = (
@@ -69,16 +69,16 @@ def _run_program_with_retry(job: tuple[str, str, int, Path]) -> dict:
 if __name__ == "__main__":
     # --- Section 1: パス定義 ---
     CONFIG = PathConfig()
-    STEP1_DIR = CONFIG.outputs / "jsperf" / "setup" / "step1"
+    STEP1_BENCH = CONFIG.outputs / "jsperf" / "setup" / "step1" / "benchmark"
     STEP2_DIR = CONFIG.outputs / "jsperf" / "setup" / "step2"
     STEP2_DIR.mkdir(parents=True, exist_ok=True)
-    if not STEP1_DIR.exists():
-        raise SystemExit(f"input not found: {STEP1_DIR}")
+    if not STEP1_BENCH.exists():
+        raise SystemExit(f"input not found: {STEP1_BENCH}")
 
     # --- Section 2: ジョブ列挙 (meta.json から slug/test_count を読み込み) ---
     jobs: list[tuple[str, str, int, Path]] = []
     bench_ids: list[str] = []
-    for meta_path in sorted(STEP1_DIR.glob("*/meta.json")):
+    for meta_path in sorted(STEP1_BENCH.glob("*/meta.json")):
         meta = hayalab.read_json(meta_path)
         slug_id: str = meta["slug_id"]
         slug: str = meta["slug"]

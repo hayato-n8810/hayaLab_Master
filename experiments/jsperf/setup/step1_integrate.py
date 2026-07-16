@@ -8,7 +8,6 @@
 
 from __future__ import annotations
 
-import os
 from collections import Counter
 from concurrent.futures import ProcessPoolExecutor
 from itertools import repeat
@@ -27,7 +26,7 @@ from hayalab.jsperf.preparation import (
 )
 
 # --- Constants ------------------------------------------------------
-WORKER_COUNT: int = max(1, (os.cpu_count() or 1) - 1)
+WORKER_COUNT: int = 20
 CHUNK_SIZE: int = 6
 SLUG_ID_WIDTH: int = 5
 

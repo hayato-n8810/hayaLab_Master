@@ -36,7 +36,7 @@ from hayalab.config import PathConfig
 from hayalab.utils.file.exec import classify_node_error, run_node
 
 # --- Constants ------------------------------------------------------
-DEFAULT_MAX_WORKERS: int = 25
+DEFAULT_MAX_WORKERS: int = 20
 NODE_BIN: str = "node"
 NODE_TIMEOUT: float = 180.0
 ERROR_TYPE_KEYS: tuple[str, ...] = (
@@ -142,7 +142,7 @@ if __name__ == "__main__":
     CONFIG = PathConfig()
 
     # 入力
-    STEP1_DIR: Path = CONFIG.outputs / "jsperf" / "setup" / "step1"
+    STEP1_BENCH: Path = CONFIG.outputs / "jsperf" / "setup" / "step1" / "benchmark"
     STEP2_TAGS: Path = CONFIG.outputs / "jsperf" / "setup" / "step2" / "tags.jsonl"
     STEP3_WORKDIR: Path = CONFIG.experiments / "jsperf" / "setup" / "step3"
     RESOLVE_PATH: Path = STEP3_WORKDIR / "cdn_list_resolve.json"
@@ -153,7 +153,7 @@ if __name__ == "__main__":
     STEP3_OUT.mkdir(parents=True, exist_ok=True)
     STEP3_BENCH.mkdir(parents=True, exist_ok=True)
 
-    for p in (STEP2_TAGS, STEP1_DIR, RESOLVE_PATH):
+    for p in (STEP2_TAGS, STEP1_BENCH, RESOLVE_PATH):
         if not p.exists():
             raise SystemExit(f"missing input: {p}")
 
@@ -229,7 +229,7 @@ if __name__ == "__main__":
     skipped_bench_no_lib: int = 0
     lib_count_dist: Counter[int] = Counter()
     for slug_id in sorted(target_slug_ids):
-        meta_path = STEP1_DIR / slug_id / "meta.json"
+        meta_path = STEP1_BENCH / slug_id / "meta.json"
         if not meta_path.exists():
             skipped_bench_no_meta += 1
             continue
@@ -246,7 +246,7 @@ if __name__ == "__main__":
         for rec in bench_tests[slug_id]:
             test_idx: int = rec["test_idx"]
             slug: str = rec["slug"]
-            src = STEP1_DIR / slug_id / f"program_{test_idx}.js"
+            src = STEP1_BENCH / slug_id / f"program_{test_idx}.js"
             if not src.exists():
                 continue
             dst = STEP3_BENCH / slug_id / f"program_{test_idx}.js"
