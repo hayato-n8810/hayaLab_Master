@@ -5,18 +5,20 @@ Step 1 の page_html.html (外部 <script src> + DOM 要素) と program_<i>.js 
 薄い HTML ラッパで結合し、ローカル HTTP サーバ経由で Chromium にロードして実行する。
 
 実行実体は benchmark/<slug_id>/ に自己完結させる (step1/step3 と同じ流儀):
-program_<i>.js は step1 から無加工コピーし、bench_<i>.html は同ディレクトリの
-program を相対パスで fetch する。
+program_<i>.js は step1 から無加工コピーする (参照・検証用。実行時には読まれない)。
+bench_<i>.html には program のソースを JS 文字列リテラルとして同期インライン埋め込みする。
 
-bench_<i>.html の構造 (program は inline 埋め込みしない):
+bench_<i>.html の構造:
 
     <!DOCTYPE html><html><head><meta charset="utf-8"></head><body>
     {page_html.html の内容そのまま}
     <script>
-    // fetch + new Function(src) で program を関数としてコンパイル・実行する。
-    // Step 6 の計測ハーネス (unit = new Function(src) を反復呼び出し) と同一の
-    // スコープ・コンパイル形式で実行可能性を検証するための形式
-    (async () => { ... const unit = new Function(src); unit(); ... })();
+    // program を JS 文字列リテラル (json.dumps + '<' を Unicode エスケープに置換) で
+    // 埋め込み、new Function(src) でコンパイル・実行する。Step 6 の計測ハーネス
+    // (unit = new Function(src) を反復呼び出し) と同一のスコープ・コンパイル形式。
+    // パース時に同期実行されるため、DOMContentLoaded で自動ブートストラップする
+    // ライブラリ (Angular 等) とのレースが起きない (jsPerf の inline script と同じ順序)
+    (() => { const src = "..."; ... const unit = new Function(src); unit(); ... })();
     </script>
     </body></html>
 
@@ -102,27 +104,30 @@ class _CoepHandler(SimpleHTTPRequestHandler):
         pass
 
 
-def _build_bench_html(page_html: str, program_src: str) -> str:
+def _build_bench_html(page_html: str, program: str) -> str:
     """1 test 分の bench HTML を生成する.
 
-    program は fetch + new Function(src) で関数としてコンパイルして 1 回実行する
-    (Step 6 の計測ハーネスと同一のスコープ・コンパイル形式)。 実行中の例外は
-    window.__bench_error に格納し、完了マーカーとして window.__bench_done を立てる。
+    program のソースを JS 文字列リテラルとして同期インライン埋め込みし、
+    new Function(src) でコンパイルして 1 回実行する (Step 6 の計測ハーネスと同一の
+    スコープ・コンパイル形式)。 パース時に同期実行されるため DOMContentLoaded 起動の
+    ライブラリとレースしない。 実行中の例外・構文エラーは window.__bench_error に
+    格納し、完了マーカーとして window.__bench_done を立てる。
 
     Args:
         page_html: step1 の page_html.html の内容 (無ければ空文字).
-        program_src: program_<i>.js の fetch パス (bench HTML と同ディレクトリの相対パス).
+        program: program_<i>.js の中身 (無加工のソースコード).
 
     Returns:
         bench_<i>.html の内容.
     """
+    # '<' を JS 文字列エスケープ (\\u003c) に置換し、ソース中の '</script>' 等が
+    # HTML パーサにタグとして解釈されるのを防ぐ (文字としては同一)
+    src_literal = json.dumps(program).replace("<", "\\u003c")
     harness = (
         "<script>\n"
-        "(async () => {\n"
+        "(() => {\n"
+        f"  const src = {src_literal};\n"
         "  try {\n"
-        f'    const res = await fetch("{program_src}");\n'
-        '    if (!res.ok) throw new Error("program fetch failed: HTTP " + res.status);\n'
-        "    const src = await res.text();\n"
         "    const unit = new Function(src);\n"
         "    unit();\n"
         "  } catch (e) {\n"
@@ -375,7 +380,7 @@ if __name__ == "__main__":
             dst_dir = STEP4_BENCH / slug_id
             dst_dir.mkdir(parents=True, exist_ok=True)
             shutil.copy2(src_program, dst_dir / f"program_{test_idx}.js")
-            html = _build_bench_html(page_html, f"program_{test_idx}.js")
+            html = _build_bench_html(page_html, src_program.read_text(encoding="utf-8"))
             (dst_dir / f"bench_{test_idx}.html").write_text(html, encoding="utf-8")
             jobs.append((slug_id, rec["slug"], test_idx, f"benchmark/{slug_id}/bench_{test_idx}.html"))
 
