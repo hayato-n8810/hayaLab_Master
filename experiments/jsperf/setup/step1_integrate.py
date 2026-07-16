@@ -76,7 +76,7 @@ def _process_benchmark(index: int, benchmark: dict, out_root: Path) -> dict:
     Args:
         index: `benchmarks[i]` の 0 始まりインデックス. slug_id の元。
         benchmark: 入力 JSON の `benchmarks[i]` エントリ.
-        out_root: 出力ルート (`outputs/jsperf/setup/step1/`).
+        out_root: 出力ルート (`outputs/jsperf/setup/step1/benchmark`).
 
     Returns:
         dict: category / test_count / cdn_urls / has_dom_elements / has_inline_scripts /
@@ -138,6 +138,7 @@ if __name__ == "__main__":
     CONFIG = PathConfig()
     INPUT_JSON = CONFIG.processed / "benchmarks_latest_revision.json"
     OUTPUT_ROOT = CONFIG.outputs / "jsperf" / "setup" / "step1"
+    OUTPUT_BENCH = OUTPUT_ROOT / "benchmark"
     OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)
 
     if not INPUT_JSON.exists():
@@ -152,7 +153,7 @@ if __name__ == "__main__":
     per_bench_results: list[dict] = []
     with ProcessPoolExecutor(max_workers=WORKER_COUNT) as executor:
         for result in tqdm(
-            executor.map(_process_benchmark, range(len(benchmarks)), benchmarks, repeat(OUTPUT_ROOT), chunksize=CHUNK_SIZE),
+            executor.map(_process_benchmark, range(len(benchmarks)), benchmarks, repeat(OUTPUT_BENCH), chunksize=CHUNK_SIZE),
             total=len(benchmarks),
             desc="step1",
         ):
