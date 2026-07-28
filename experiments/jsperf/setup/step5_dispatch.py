@@ -54,8 +54,8 @@ if __name__ == "__main__":
     STEP5_OUT.mkdir(parents=True, exist_ok=True)
 
     JSPERF_ROOT: Path = CONFIG.data / "jsPerf"
-    NODE_DST_ROOT: Path = JSPERF_ROOT / "Node"
-    PW_DST_ROOT: Path = JSPERF_ROOT / "Playwright"
+    NODE_DST_ROOT: Path = JSPERF_ROOT / "Node" / "origin"
+    PW_DST_ROOT: Path = JSPERF_ROOT / "Playwright" / "origin"
 
     for p in (STEP1_BENCH, STEP4_TAGS):
         if not p.exists():
