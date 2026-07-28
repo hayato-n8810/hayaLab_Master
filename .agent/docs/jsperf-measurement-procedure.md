@@ -13,6 +13,14 @@
 - 1 ベンチマーク = 1 環境で実行する
 - Docker のベース Node バージョンは両環境で揃える（別途設定）
 
+## 確定済み設計判断（2026-07 更新。以降の記述と矛盾する場合はこちらを優先）
+
+- **正規化変換は 2 つに限定**: (1) Step 3.1 の npm `require` 挿入、(2) Step 4/6 の実行用 HTML への script 挿入。これ以外のプログラム改変（`Benchmark.prototype.setup` の展開等）は行わず、実行できないものは実行失敗ベースで除外する。除外が許容できない量になった場合のみ正規化の追加を検討する。
+- **実行環境は自己完結**: jsperf.app が sandbox に提供する暗黙グローバル（lodash 4.17.21 / Benchmark 2.1.4）は注入しない。これらに依存するテスト（`Benchmark` / `deferred` / `ui` 参照等）は実行失敗で自然除外され、件数は step4 の error_head から集計できる。
+- **Step 4 実装の確定仕様**: program は JS 文字列リテラル（`json.dumps` + `<` の Unicode エスケープ）として bench HTML に同期インライン埋め込みし、`new Function(src)` でコンパイル・実行する（Step 6 ハーネスと同一のコンパイル形式。パース時に同期実行されるため DOMContentLoaded で自動ブートストラップするライブラリとレースしない。構文エラーも実行時例外として捕捉される）。`program_<i>.js` のコピーは参照用に残すが実行時には読まれない。Step 6 の `bench_<i>.measure.html` も同じ「文字列リテラル + `new Function`」形式とする。COEP は `require-corp` ではなく `credentialless`（require-corp は CORP ヘッダの無い外部スクリプトを全ブロックするため。`crossOriginIsolated` は credentialless でも成立）。error_type は LoadFailed / Timeout / ScriptLoadFailed / PageError / ConsoleError / DriverCrashed の 6 種。results.jsonl は逐次追記し、終了時に同一キー後勝ちデデュープ + ソートの確定版を書き戻す。worker ごとに独立した Playwright driver / browser / HTTP ポート（DEFAULT_PORT + i）を持ち、driver 死亡時は当該 job を DriverCrashed として記録し worker 単位で再起動する。
+- **Step 6 計測方針**: iteration unit は setup + test + teardown を結合したまま計測する（test が setup の状態を変更しても処理の意味が変わらないことを優先）。外部 CDN 読み込みはロード時のみで計測ループ外のため許容する。console 出力コストへの対策は行わない（Timeout / メモリエラーになるならそれを受け入れる）。ペアの計測ラウンドは A/B 交互実行とし、warmup とバッチサイズ N の自動調整（1 ラウンドがタイマ分解能に対して十分長くなるまで拡大）を行う。CPU pinning / 周波数制御は行わず、95% 信頼区間 + 効果量しきい値の保守的フィルタで代替する（満たさないペアは学習データに採用しない）。CPU / Node / Chromium / V8 / 起動フラグ / K・N・M / しきい値は summary に記録する。
+- **非同期テスト（`deferred` 依存）は計測対象外**とする。
+
 ## 全体方針: 件数トラッキング
 
 各ステップの入力・出力件数と、除外/振り分け件数をすべて JSONL / summary JSON に記録する。 パイプライン実行後に「どこで何件落ちたか」が完全に追跡できるようにする。
@@ -36,7 +44,7 @@
 - `teardown`: JS 文字列
 - `tests[]`: `{title, code}` のリスト
 
-各ベンチマークについて、`preparation_html` からインライン `<script>` の中身を抽出し、`setup` の前に連結する。 その後、各 test に対して 1 つの実行 JS ファイルを生成する。
+各ベンチマークについて、`preparation_html` からインライン `<script>` の中身を抽出し、`setup` の前に連結する。 抽出対象はブラウザが JavaScript として実行する type（type なし / `text/javascript` / `application/javascript` / `module`）のみとする。 `text/template` 等の非 JS type はブラウザが実行しないデータブロックであり、JS へは連結せず `page_html.html` 側に残す。 その後、各 test に対して 1 つの実行 JS ファイルを生成する。
 また、このとき、該当ベンチマークの `preparation_html` から外部 `<script src>` URL を抽出し、リストアップする。
 CDN URL パターン（`cdnjs.cloudflare.com`, `ajax.googleapis.com`, `unpkg.com`, `code.jquery.com`, etc.）を列挙する。 このとき、文字列としてユニークなものを列挙すること。
 
@@ -280,37 +288,46 @@ Step 3.1 でインポートを挿入した JS を Node で再実行する。 対
 
 実装ファイル：`experiments/jsperf/setup/step5_dispatch.py`
 
-残存ベンチマークを、成功タグに基づいて計測環境に振り分ける。
+残存ベンチマークを、成功タグに基づいて計測環境に振り分ける。 実行環境のプログラムはベンチマーク内で統一する（1 ベンチマーク = 1 ソース）。
 
 ### 振り分けルール
 
-- **全 JS に Node 成功タグが付いている**ベンチマーク → **Node 計測**
-  - 使用する JS: Step 3.1 のインポート挿入済み版（Step 3.1 対象外なら Step 1 版）
-- **一つでも Playwright 成功タグが付いている JS を含む**ベンチマーク → **Playwright 計測**
-  - 使用する JS: **Step 1 の状態**（インポートなし）に戻す
-  - 実行形式: 1 test = 1 HTML（Step 4 と同じ形式で、外部 `<script src>` / DOM 要素 / 実行 JS / ハーネスを 1 つの HTML に統合）
+1. どの環境（node/npm/Playwright）でも成功タグが付かない test を除外する。
+2. 除外後に残った test が **2 個未満**のベンチマークは除外する（ペアを作れないため）。
+3. 残った test 全体が同一環境で成功しているベンチマークを、その環境へ振り分ける（上から順に判定。プログラムのソースはベンチマーク内で統一される）:
+   - **全 test が node_success** → **Node 計測**（`dispatch_rule = "node"`、Step 1 の素版 program）
+   - **全 test が npm_success** → **Node 計測**（`dispatch_rule = "npm"`、Step 3.1 の require 注入版 program）
+   - **全 test が playwright_success** → **Playwright 計測**（`dispatch_rule = "playwright"`、Step 1 の素版 program + `page_html.html`）
+4. いずれの環境でも「全 test 成功」にならない（環境が混在する）ベンチマークは除外する。
 
-### 除外条件
+Playwright 計測の実行形式は 1 test = 1 HTML（Step 4 と同じ形式で、外部 `<script src>` / DOM 要素 / 実行 JS / ハーネスを 1 つの HTML に統合）。
 
-1. Step 2〜4 のいずれの成功タグも付かなかった JS を除外
-2. 除外後、成功 JS が **2 個未満**のベンチマークも除外（ペアを作れないため）
+### プログラムの配置
+
+計測対象ベンチマークの program を、実行環境ごとに以下へコピーして配置する（`data/jsPerf/` は冪等性のため実行のたびに作り直す）。
+
+- **Node**（`node` / `npm`）: `data/jsPerf/Node/<slug_id>/program_<i>.js`
+- **Playwright**: `data/jsPerf/Playwright/<slug_id>/(program_<i>.js, page_html.html)`
 
 ### 報告する件数
 
 - 入力ベンチマーク数（Step 4 完了時点で残っているもの）
-- 除外 JS 数
-- 除外ベンチマーク数（JS < 2）
-- Node 計測に振り分けたベンチマーク数
+- 除外 test 数（理由別: `no_success_tag` / `mixed_env` / `missing_program_file` / `benchmark_excluded`）
+- 除外ベンチマーク数（理由別: `insufficient_pair` / `mixed_env` / `programs_missing`）
+- Node 計測に振り分けたベンチマーク数（`node` / `npm` 内訳）
 - Playwright 計測に振り分けたベンチマーク数
 - 残存ベンチマークの test 数ヒストグラム
 
 ### 出力
 
-`outputs/jsperf/setup/step5/`
-- `excluded_js.jsonl`: 除外された JS と理由
+計測用プログラム実体:
+- `data/jsPerf/Node/<slug_id>/`, `data/jsPerf/Playwright/<slug_id>/`
+
+件数トラッキング `outputs/jsperf/setup/step5/`:
+- `excluded_js.jsonl`: 除外された test と理由
 - `excluded_benchmarks.jsonl`: 除外されたベンチマークと理由
-- `node_bench.jsonl`: Node 計測対象ベンチマーク一覧（パス付き）
-- `playwright_bench.jsonl`: Playwright 計測対象ベンチマーク一覧（パス付き）
+- `node_bench.jsonl`: Node 計測対象ベンチマーク一覧（配置パス付き）
+- `playwright_bench.jsonl`: Playwright 計測対象ベンチマーク一覧（配置パス付き）
 - `summary.json`: 集計
 
 ---
