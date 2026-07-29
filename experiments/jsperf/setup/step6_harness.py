@@ -20,7 +20,7 @@ Step 4 の成功タグ (tags.jsonl) から Step 5 と同一の振り分けロジ
   (本体の stdout / console.log 出力と混ざらないよう stdout は使わない)。
 - Playwright: Step 4 と同一の bench HTML。program を JS 文字列リテラル ('<' を Unicode
   エスケープ) として同期インライン埋め込みし `const _iteration_unit = new Function(src)` で
-  コンパイルして反復呼び出しする (program 無改変)。時間は performance.now() * 1e6 (ns 換算。
+  コンパイルして反復呼び出しする (program 無改変)。時間は performance.now() (ms） 換算。
   Step 4 と同じ crossOriginIsolated 環境で高精度)。結果は window.__result に格納し、実行
   フェーズが page.evaluate で回収する (ブラウザはファイルに直接書けないため)。
 
@@ -149,7 +149,7 @@ def _build_playwright_measure(slug_id: str, test_idx: int, page_html: str, progr
         "      const t0 = performance.now();\n"
         "      for (let i = 0; i < N_BATCH; i++) _iteration_unit();\n"
         "      const t1 = performance.now();\n"
-        "      samples.push((t1 - t0) * 1e6);\n"
+        "      samples.push(t1 - t0);\n"
         "    }\n"
         "    out.batch = N_BATCH; out.warmup = K_WARMUP; out.rounds = M_MEASURE; out.samples = samples;\n"
         "  } catch (e) {\n"
@@ -191,7 +191,7 @@ if __name__ == "__main__":
     tags: list[dict] = hayalab.read_jsonl(STEP4_TAGS)
     bench_tags: dict[str, list[dict]] = defaultdict(list)
     # テスト用
-    tags = tags[0:50]
+    tags = tags[0:100]
     for t in tags:
         bench_tags[t["slug_id"]].append(t)
     print(f"[step6] benchmarks total: {len(bench_tags)}  tests total: {len(tags)}")
