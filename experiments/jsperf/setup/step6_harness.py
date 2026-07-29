@@ -50,7 +50,7 @@ from hayalab.config import PathConfig
 
 # --- Constants (計測ハイパーパラメータ) ----------------------------
 K_WARMUP: int = 5  # ウォームアップラウンド数 (計測破棄)
-N_BATCH_NODE: int = 100  # 1 バッチの反復ユニット数(Node)
+N_BATCH_NODE: int = 1000  # 1 バッチの反復ユニット数(Node)
 N_BATCH_PLAYWRIGHT: int = 1000  # 1 バッチの反復ユニット数(Playwright)
 M_MEASURE: int = 10  # 本計測ラウンド数 (samples の要素数)
 
@@ -190,8 +190,6 @@ if __name__ == "__main__":
     # --- Section 2: タグ読み込み + 振り分け再計算 ---
     tags: list[dict] = hayalab.read_jsonl(STEP4_TAGS)
     bench_tags: dict[str, list[dict]] = defaultdict(list)
-    # テスト用
-    tags = tags[0:100]
     for t in tags:
         bench_tags[t["slug_id"]].append(t)
     print(f"[step6] benchmarks total: {len(bench_tags)}  tests total: {len(tags)}")
