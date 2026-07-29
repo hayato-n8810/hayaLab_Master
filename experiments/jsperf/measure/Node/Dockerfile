@@ -20,6 +20,8 @@ ENV PYTHONUNBUFFERED=1
 ENV UV_LINK_MODE=copy
 
 # npm 版ハーネスの require 依存をビルド時にインストールする (完全な package.json 前提)。
+# 大量パッケージの並列 HTTPS ダウンロードで OpenSSL の AES-GCM が競合し
+# ERR_SSL_CIPHER_OPERATION_FAILED が出るため、--maxsockets 1 で直列化し、retry も付ける。
 COPY package.json /opt/npm/package.json
-RUN cd /opt/npm && npm install
+RUN cd /opt/npm && npm install --no-audit --no-fund --maxsockets 1 --fetch-retries 5 --fetch-retry-mintimeout 20000
 ENV NODE_PATH=/opt/npm/node_modules
