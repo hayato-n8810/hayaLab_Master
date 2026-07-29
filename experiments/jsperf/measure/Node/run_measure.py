@@ -16,16 +16,23 @@ step6 が配置した `data/jsPerf/Node/measure/<slug_id>/bench_<i>.measure.js` 
 results.jsonl は完了順に逐次追記し、終了時に (slug_id, test_idx) ソートの確定版を書き戻す
 (長時間実行の途中でプロセスが落ちても完了分は残す)。
 
+`--num-shards N --shard i` でベンチ単位にシャード分割できる (擬似並列)。同一 slug_id は
+必ず同一シャードに割り当てるため、ペア (同一ベンチ内の test 群) は 1 つの実行環境で計測され、
+ペア内の相対比較の妥当性が保たれる。分割時の出力は results.shard{i}.jsonl。
+シャードごとに別コアへ pin して並列実行し、merge_shards.py で結合する想定。
+
 入力:
 - `data/jsPerf/Node/measure/<slug_id>/bench_<i>.measure.js` (step6 が配置)
 
 出力: `outputs/jsperf/measure/Node/`
-- `results.jsonl`: per-test 計測結果 (slug_id, test_idx, status, batch, warmup, rounds, samples_ns, elapsed_sec)
-- `summary.json`: 集計 (status 内訳、経過時間)
+- `results.jsonl` (分割時は `results.shard{i}.jsonl`): per-test 計測結果
+  (slug_id, test_idx, status, batch, warmup, rounds, samples_ns, elapsed_sec)
+- `summary.json` (分割時は `summary.shard{i}.json`): 集計 (status 内訳、経過時間)
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 import subprocess
 import time
@@ -92,7 +99,14 @@ def _run_one(measure_js: Path) -> dict:
 
 # --- Main flow -----------------------------------------------------
 if __name__ == "__main__":
-    # --- Section 1: パス解決 ---
+    # --- Section 1: 引数・パス解決 ---
+    parser = argparse.ArgumentParser(description="Node 実行時間計測 (ベンチ単位シャード対応).")
+    parser.add_argument("--shard", type=int, default=0, help="担当シャード番号 (0-based)")
+    parser.add_argument("--num-shards", type=int, default=1, help="総シャード数 (1 = 分割なし)")
+    args = parser.parse_args()
+    if not (0 <= args.shard < args.num_shards):
+        raise SystemExit(f"invalid shard: shard={args.shard} num_shards={args.num_shards}")
+
     CONFIG = PathConfig()
     MEASURE_ROOT: Path = CONFIG.data / "jsPerf" / "Node" / "measure"
     OUT: Path = CONFIG.outputs / "jsperf" / "measure" / "Node"
@@ -101,12 +115,16 @@ if __name__ == "__main__":
     if not MEASURE_ROOT.exists():
         raise SystemExit(f"missing input: {MEASURE_ROOT}")
 
-    # --- Section 2: 計測対象の列挙 (決定的順序) ---
-    measure_files: list[Path] = sorted(MEASURE_ROOT.glob("*/bench_*.measure.js"))
-    print(f"[measure-node] targets: {len(measure_files)}  (timeout={TIMEOUT_SEC}s/test)")
+    # --- Section 2: 計測対象の列挙 (ベンチ単位シャード; 同一 slug_id は同一シャード) ---
+    all_files: list[Path] = sorted(MEASURE_ROOT.glob("*/bench_*.measure.js"))
+    uniq_slugs: list[str] = sorted({p.parent.name for p in all_files})
+    shard_slugs: set[str] = {s for idx, s in enumerate(uniq_slugs) if idx % args.num_shards == args.shard}
+    measure_files: list[Path] = [p for p in all_files if p.parent.name in shard_slugs]
+    suffix = f".shard{args.shard}" if args.num_shards > 1 else ""
+    print(f"[measure-node] shard {args.shard}/{args.num_shards}: {len(shard_slugs)} benchmarks, {len(measure_files)} tests (timeout={TIMEOUT_SEC}s/test)")
 
     # --- Section 3: 直列実行 (results.jsonl へ逐次追記) ---
-    results_path = OUT / "results.jsonl"
+    results_path = OUT / f"results{suffix}.jsonl"
     start = time.perf_counter()
     results: list[dict] = []
     with open(results_path, "w", encoding="utf-8") as fp:
@@ -117,7 +135,7 @@ if __name__ == "__main__":
             fp.flush()
             if i % PROGRESS_EVERY == 0:
                 done = Counter(r["status"] for r in results)
-                print(f"[measure-node] {i}/{len(measure_files)}  {dict(done)}")
+                print(f"[measure-node] shard {args.shard}: {i}/{len(measure_files)}  {dict(done)}")
     elapsed_sec = time.perf_counter() - start
 
     # --- Section 4: 確定版 (ソート) 書き戻し ---
@@ -128,14 +146,16 @@ if __name__ == "__main__":
     status_counts: Counter[str] = Counter(r["status"] for r in results)
     summary = {
         "env": "node",
+        "shard": args.shard,
+        "num_shards": args.num_shards,
         "timeout_sec": TIMEOUT_SEC,
         "elapsed_sec": elapsed_sec,
         "total_tests": len(results),
         "status_counts": {k: status_counts.get(k, 0) for k in ("success", "error", "timeout")},
     }
-    hayalab.write_json(OUT / "summary.json", summary)
+    hayalab.write_json(OUT / f"summary{suffix}.json", summary)
 
     # --- Section 6: 進捗レポート ---
-    print(f"[measure-node] elapsed: {elapsed_sec:.1f}s")
+    print(f"[measure-node] shard {args.shard}/{args.num_shards} done, elapsed: {elapsed_sec:.1f}s")
     print(f"[measure-node] status_counts: {summary['status_counts']}")
-    print(f"[measure-node] outputs: {OUT}")
+    print(f"[measure-node] outputs: {results_path}")

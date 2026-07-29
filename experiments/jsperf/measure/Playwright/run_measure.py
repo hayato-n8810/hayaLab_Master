@@ -19,16 +19,22 @@ HTTP サーバは COOP: same-origin / COEP: credentialless を付与し、crossO
 
 results.jsonl は完了順に逐次追記し、終了時に (slug_id, test_idx) ソートの確定版を書き戻す。
 
+`--num-shards N --shard i` でベンチ単位にシャード分割できる (擬似並列)。同一 slug_id は
+必ず同一シャードに割り当てるため、ペアは 1 つの実行環境で計測され相対比較の妥当性が保たれる。
+分割時の出力は results.shard{i}.jsonl、HTTP ポートは PORT+i にずらす。
+
 入力:
 - `data/jsPerf/Playwright/measure/<slug_id>/bench_<i>.measure.html` (step6 が配置)
 
 出力: `outputs/jsperf/measure/Playwright/`
-- `results.jsonl`: per-test 計測結果 (slug_id, test_idx, status, batch, warmup, rounds, samples_ms, elapsed_sec)
-- `summary.json`: 集計 (status 内訳、経過時間)
+- `results.jsonl` (分割時は `results.shard{i}.jsonl`): per-test 計測結果
+  (slug_id, test_idx, status, batch, warmup, rounds, samples_ms, elapsed_sec)
+- `summary.json` (分割時は `summary.shard{i}.json`): 集計 (status 内訳、経過時間)
 """
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import json
 import threading
@@ -148,7 +154,14 @@ async def _measure_all(jobs: list[tuple[str, int, str]], base_url: str, timeout_
 
 # --- Main flow -----------------------------------------------------
 if __name__ == "__main__":
-    # --- Section 1: パス解決 ---
+    # --- Section 1: 引数・パス解決 ---
+    parser = argparse.ArgumentParser(description="Playwright 実行時間計測 (ベンチ単位シャード対応).")
+    parser.add_argument("--shard", type=int, default=0, help="担当シャード番号 (0-based)")
+    parser.add_argument("--num-shards", type=int, default=1, help="総シャード数 (1 = 分割なし)")
+    args = parser.parse_args()
+    if not (0 <= args.shard < args.num_shards):
+        raise SystemExit(f"invalid shard: shard={args.shard} num_shards={args.num_shards}")
+
     CONFIG = PathConfig()
     MEASURE_ROOT: Path = CONFIG.data / "jsPerf" / "Playwright" / "measure"
     OUT: Path = CONFIG.outputs / "jsperf" / "measure" / "Playwright"
@@ -157,23 +170,31 @@ if __name__ == "__main__":
     if not MEASURE_ROOT.exists():
         raise SystemExit(f"missing input: {MEASURE_ROOT}")
 
-    # --- Section 2: 計測対象の列挙 (決定的順序) ---
+    # ポートはシャードごとにずらす (同一ホスト直実行でも衝突しないように)
+    port = PORT + args.shard
+
+    # --- Section 2: 計測対象の列挙 (ベンチ単位シャード; 同一 slug_id は同一シャード) ---
+    all_files = sorted(MEASURE_ROOT.glob("*/bench_*.measure.html"))
+    uniq_slugs: list[str] = sorted({p.parent.name for p in all_files})
+    shard_slugs: set[str] = {s for idx, s in enumerate(uniq_slugs) if idx % args.num_shards == args.shard}
     jobs: list[tuple[str, int, str]] = []
-    for p in sorted(MEASURE_ROOT.glob("*/bench_*.measure.html")):
-        slug_id = p.parent.name
+    for p in all_files:
+        if p.parent.name not in shard_slugs:
+            continue
         test_idx = int(p.stem.split(".")[0].split("_")[1])  # "bench_<i>.measure" → i
-        jobs.append((slug_id, test_idx, p.relative_to(MEASURE_ROOT).as_posix()))
-    print(f"[measure-pw] targets: {len(jobs)}  (timeout={PAGE_TIMEOUT_MS}ms/test)")
+        jobs.append((p.parent.name, test_idx, p.relative_to(MEASURE_ROOT).as_posix()))
+    suffix = f".shard{args.shard}" if args.num_shards > 1 else ""
+    print(f"[measure-pw] shard {args.shard}/{args.num_shards}: {len(shard_slugs)} benchmarks, {len(jobs)} tests (timeout={PAGE_TIMEOUT_MS}ms/test)")
 
     # --- Section 3: ローカル HTTP サーバ起動 (docroot = measure ルート) ---
     handler = partial(_CoepHandler, directory=str(MEASURE_ROOT))
-    httpd = ThreadingHTTPServer(("127.0.0.1", PORT), handler)
+    httpd = ThreadingHTTPServer(("127.0.0.1", port), handler)
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    base_url = f"http://127.0.0.1:{PORT}"
+    base_url = f"http://127.0.0.1:{port}"
     print(f"[measure-pw] http server: {base_url}  (docroot={MEASURE_ROOT}, coep={COEP_MODE})")
 
     # --- Section 4: 直列実行 (results.jsonl へ逐次追記) ---
-    results_path = OUT / "results.jsonl"
+    results_path = OUT / f"results{suffix}.jsonl"
     start = time.perf_counter()
     with open(results_path, "w", encoding="utf-8") as fp:
         results: list[dict] = asyncio.run(_measure_all(jobs, base_url, PAGE_TIMEOUT_MS, fp))
@@ -188,15 +209,17 @@ if __name__ == "__main__":
     status_counts: Counter[str] = Counter(r["status"] for r in results)
     summary = {
         "env": "playwright",
+        "shard": args.shard,
+        "num_shards": args.num_shards,
         "coep_mode": COEP_MODE,
         "page_timeout_ms": PAGE_TIMEOUT_MS,
         "elapsed_sec": elapsed_sec,
         "total_tests": len(results),
         "status_counts": {k: status_counts.get(k, 0) for k in ("success", "error", "timeout")},
     }
-    hayalab.write_json(OUT / "summary.json", summary)
+    hayalab.write_json(OUT / f"summary{suffix}.json", summary)
 
     # --- Section 7: 進捗レポート ---
-    print(f"[measure-pw] elapsed: {elapsed_sec:.1f}s")
+    print(f"[measure-pw] shard {args.shard}/{args.num_shards} done, elapsed: {elapsed_sec:.1f}s")
     print(f"[measure-pw] status_counts: {summary['status_counts']}")
-    print(f"[measure-pw] outputs: {OUT}")
+    print(f"[measure-pw] outputs: {results_path}")

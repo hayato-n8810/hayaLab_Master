@@ -1,31 +1,64 @@
-# Playwright 実行時間計測コンテナ (最小マウント)
+# Playwright 実行時間計測コンテナ (最小マウント + ベンチ単位シャード並列)
 # 計測に必要なパスのみを /workspace 配下へ同一相対構造でバインドし、
 # 無関係なツリーからの干渉を避ける。 結果は window.__result を回収側 (run_measure) が
 # 書き出すため、入力の measure ディレクトリは ro でよい。
 # 外部 <script src> の live fetch を行うためネットワークはデフォルト (bridge) のまま。
+#
+# 4 シャードを別々の物理コアに pin して擬似並列で計測する (各ソケット 2 シャード)。同一ベンチ
+# (ペア) は同一シャードに割り当てられる (run_measure.py --shard i --num-shards 4)。
+# この機の構成: 物理 24 コア (12 コア x 2 ソケット / NUMA 2 ノード)、HT 有効 48 論理。
+#   物理コア i = 論理 {i, i+24}。 NUMA0=物理0-11、NUMA1=物理12-23。
+# 各シャードに 2 物理コア (Chromium の複数スレッド用) を専有させ、ソケットを跨がない。
+# コア割当は環境変数で上書き可能。
+x-pw-base: &pw-base
+  build:
+    context: .
+    dockerfile: Dockerfile
+  image: jsperf-measure-playwright
+  working_dir: /workspace
+  init: true
+  environment:
+    PYTHONUNBUFFERED: "1"
+    UV_LINK_MODE: copy
+    # コンテナ内の Python 用 playwright ブラウザはイメージ同梱のものを使う
+    PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
+  volumes:
+    # uv run が hayalab を解決するためのルート要素 (README.md は pyproject の readme 参照先)
+    - ../../../../src:/workspace/src:ro
+    - ../../../../pyproject.toml:/workspace/pyproject.toml:ro
+    - ../../../../uv.lock:/workspace/uv.lock:ro
+    - ../../../../README.md:/workspace/README.md:ro
+    # 実行スクリプト
+    - ../../../../experiments/jsperf/measure/Playwright:/workspace/experiments/jsperf/measure/Playwright:ro
+    # 入力 (measure ハーネス)。ブラウザはファイルに書けないため ro でよい
+    - ../../../../data/jsPerf/Playwright/measure:/workspace/data/jsPerf/Playwright/measure:ro
+    # 集約結果の出力
+    - ../../../../outputs/jsperf/measure/Playwright:/workspace/outputs/jsperf/measure/Playwright:rw
+
 services:
-  bench-playwright:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: jsperf-measure-playwright
-    container_name: jsperf-measure-playwright
-    working_dir: /workspace
-    init: true
-    environment:
-      PYTHONUNBUFFERED: "1"
-      UV_LINK_MODE: copy
-      # コンテナ内の Python 用 playwright ブラウザはイメージ同梱のものを使う
-      PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
-    volumes:
-      # uv run が hayalab を解決するためのルート要素 (README.md は pyproject の readme 参照先)
-      - ../../../../src:/workspace/src:ro
-      - ../../../../pyproject.toml:/workspace/pyproject.toml:ro
-      - ../../../../uv.lock:/workspace/uv.lock:ro
-      - ../../../../README.md:/workspace/README.md:ro
-      # 実行スクリプト
-      - ../../../../experiments/jsperf/measure/Playwright:/workspace/experiments/jsperf/measure/Playwright:ro
-      # 入力 (measure ハーネス)。ブラウザはファイルに書けないため ro でよい
-      - ../../../../data/jsPerf/Playwright/measure:/workspace/data/jsPerf/Playwright/measure:ro
-      # 集約結果の出力
-      - ../../../../outputs/jsperf/measure/Playwright:/workspace/outputs/jsperf/measure/Playwright:rw
+  # --- NUMA0 (物理コア 0-3) ---
+  bench-playwright-shard0:
+    <<: *pw-base
+    container_name: jsperf-measure-playwright-0
+    cpuset: "${PW_SHARD0_CPUS:-0,1,24,25}"
+    mem_limit: "${PW_SHARD_MEM:-40g}"
+    command: uv run python experiments/jsperf/measure/Playwright/run_measure.py --shard 0 --num-shards 4
+  bench-playwright-shard1:
+    <<: *pw-base
+    container_name: jsperf-measure-playwright-1
+    cpuset: "${PW_SHARD1_CPUS:-2,3,26,27}"
+    mem_limit: "${PW_SHARD_MEM:-40g}"
+    command: uv run python experiments/jsperf/measure/Playwright/run_measure.py --shard 1 --num-shards 4
+  # --- NUMA1 (物理コア 12-15) ---
+  bench-playwright-shard2:
+    <<: *pw-base
+    container_name: jsperf-measure-playwright-2
+    cpuset: "${PW_SHARD2_CPUS:-12,13,36,37}"
+    mem_limit: "${PW_SHARD_MEM:-40g}"
+    command: uv run python experiments/jsperf/measure/Playwright/run_measure.py --shard 2 --num-shards 4
+  bench-playwright-shard3:
+    <<: *pw-base
+    container_name: jsperf-measure-playwright-3
+    cpuset: "${PW_SHARD3_CPUS:-14,15,38,39}"
+    mem_limit: "${PW_SHARD_MEM:-40g}"
+    command: uv run python experiments/jsperf/measure/Playwright/run_measure.py --shard 3 --num-shards 4

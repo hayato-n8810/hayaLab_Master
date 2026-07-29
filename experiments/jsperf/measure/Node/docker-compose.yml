@@ -1,28 +1,85 @@
-# Node 実行時間計測コンテナ (最小マウント)
+# Node 実行時間計測コンテナ (最小マウント + ベンチ単位シャード並列)
 # 計測に必要なパスのみを /workspace 配下へ同一相対構造でバインドし、
 # 無関係なツリー (.git / 他の data・outputs / 他 experiments) からの干渉を避ける。
 # 入力の measure ディレクトリは、各ハーネスが result.json を書き出すため rw。
+#
+# 8 シャードを別々の物理コアに pin して擬似並列で計測する (各ソケット 4 シャード)。同一ベンチ
+# (ペア) は同一シャードに割り当てられる (run_measure.py --shard i --num-shards 8)。
+# この機の構成: 物理 24 コア (12 コア x 2 ソケット / NUMA 2 ノード)、HT 有効 48 論理。
+#   物理コア i = 論理 {i, i+24}。 NUMA0=物理0-11、NUMA1=物理12-23。
+# 各シャードに 1 物理コア (両 HT 論理) を専有させ、ソケットを跨がない (メモリ局所性は first-touch)。
+# 残りの物理コアは OS / Docker / 親プロセス用に予約。 コア割当は環境変数で上書き可能。
+x-node-base: &node-base
+  build:
+    context: .
+    dockerfile: Dockerfile
+  image: jsperf-measure-node
+  working_dir: /workspace
+  environment:
+    PYTHONUNBUFFERED: "1"
+    UV_LINK_MODE: copy
+  # NODE_PATH はイメージ側 /opt/npm/node_modules を指す (Dockerfile)
+  volumes:
+    # uv run が hayalab を解決するためのルート要素 (README.md は pyproject の readme 参照先)
+    - ../../../../src:/workspace/src:ro
+    - ../../../../pyproject.toml:/workspace/pyproject.toml:ro
+    - ../../../../uv.lock:/workspace/uv.lock:ro
+    - ../../../../README.md:/workspace/README.md:ro
+    # 実行スクリプト (node_modules はイメージ側 /opt/npm にあるためここには不要)
+    - ../../../../experiments/jsperf/measure/Node:/workspace/experiments/jsperf/measure/Node:ro
+    # 入力 (measure ハーネス) + result.json 書き出し
+    - ../../../../data/jsPerf/Node/measure:/workspace/data/jsPerf/Node/measure:rw
+    # 集約結果の出力
+    - ../../../../outputs/jsperf/measure/Node:/workspace/outputs/jsperf/measure/Node:rw
+
 services:
-  bench-node:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: jsperf-measure-node
-    container_name: jsperf-measure-node
-    working_dir: /workspace
-    # NODE_PATH はイメージ側でビルド時にインストールした /opt/npm/node_modules を指す (Dockerfile)
-    environment:
-      PYTHONUNBUFFERED: "1"
-      UV_LINK_MODE: copy
-    volumes:
-      # uv run が hayalab を解決するためのルート要素 (README.md は pyproject の readme 参照先)
-      - ../../../../src:/workspace/src:ro
-      - ../../../../pyproject.toml:/workspace/pyproject.toml:ro
-      - ../../../../uv.lock:/workspace/uv.lock:ro
-      - ../../../../README.md:/workspace/README.md:ro
-      # 実行スクリプト (node_modules はイメージ側 /opt/npm にあるためここには不要)
-      - ../../../../experiments/jsperf/measure/Node:/workspace/experiments/jsperf/measure/Node:ro
-      # 入力 (measure ハーネス) + result.json 書き出し
-      - ../../../../data/jsPerf/Node/measure:/workspace/data/jsPerf/Node/measure:rw
-      # 集約結果の出力
-      - ../../../../outputs/jsperf/measure/Node:/workspace/outputs/jsperf/measure/Node:rw
+  # --- NUMA0 (物理コア 0-3) ---
+  bench-node-shard0:
+    <<: *node-base
+    container_name: jsperf-measure-node-0
+    cpuset: "${NODE_SHARD0_CPUS:-0,24}"
+    mem_limit: "${NODE_SHARD_MEM:-20g}"
+    command: uv run python experiments/jsperf/measure/Node/run_measure.py --shard 0 --num-shards 8
+  bench-node-shard1:
+    <<: *node-base
+    container_name: jsperf-measure-node-1
+    cpuset: "${NODE_SHARD1_CPUS:-1,25}"
+    mem_limit: "${NODE_SHARD_MEM:-20g}"
+    command: uv run python experiments/jsperf/measure/Node/run_measure.py --shard 1 --num-shards 8
+  bench-node-shard2:
+    <<: *node-base
+    container_name: jsperf-measure-node-2
+    cpuset: "${NODE_SHARD2_CPUS:-2,26}"
+    mem_limit: "${NODE_SHARD_MEM:-20g}"
+    command: uv run python experiments/jsperf/measure/Node/run_measure.py --shard 2 --num-shards 8
+  bench-node-shard3:
+    <<: *node-base
+    container_name: jsperf-measure-node-3
+    cpuset: "${NODE_SHARD3_CPUS:-3,27}"
+    mem_limit: "${NODE_SHARD_MEM:-20g}"
+    command: uv run python experiments/jsperf/measure/Node/run_measure.py --shard 3 --num-shards 8
+  # --- NUMA1 (物理コア 12-15) ---
+  bench-node-shard4:
+    <<: *node-base
+    container_name: jsperf-measure-node-4
+    cpuset: "${NODE_SHARD4_CPUS:-12,36}"
+    mem_limit: "${NODE_SHARD_MEM:-20g}"
+    command: uv run python experiments/jsperf/measure/Node/run_measure.py --shard 4 --num-shards 8
+  bench-node-shard5:
+    <<: *node-base
+    container_name: jsperf-measure-node-5
+    cpuset: "${NODE_SHARD5_CPUS:-13,37}"
+    mem_limit: "${NODE_SHARD_MEM:-20g}"
+    command: uv run python experiments/jsperf/measure/Node/run_measure.py --shard 5 --num-shards 8
+  bench-node-shard6:
+    <<: *node-base
+    container_name: jsperf-measure-node-6
+    cpuset: "${NODE_SHARD6_CPUS:-14,38}"
+    mem_limit: "${NODE_SHARD_MEM:-20g}"
+    command: uv run python experiments/jsperf/measure/Node/run_measure.py --shard 6 --num-shards 8
+  bench-node-shard7:
+    <<: *node-base
+    container_name: jsperf-measure-node-7
+    cpuset: "${NODE_SHARD7_CPUS:-15,39}"
+    mem_limit: "${NODE_SHARD_MEM:-20g}"
+    command: uv run python experiments/jsperf/measure/Node/run_measure.py --shard 7 --num-shards 8
