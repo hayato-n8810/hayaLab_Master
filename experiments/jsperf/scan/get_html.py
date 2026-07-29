@@ -196,7 +196,7 @@ if __name__ == "__main__":
     # --- パス決定 ------------------------------------------------------------
     path_config = PathConfig()
     base_dir = path_config.outputs / "jsperf" / "scan"
-    xml_dir = path_config.data / "jsPerf_xml"
+    xml_dir = path_config.data / "jsPerf" / "xml"
     index_path = base_dir / "index.json"
 
     # --- XML から計画エントリを構築 -----------------------------------------
