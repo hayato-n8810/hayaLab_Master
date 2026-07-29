@@ -1,0 +1,31 @@
+# Playwright 実行時間計測コンテナ (最小マウント)
+# 計測に必要なパスのみを /workspace 配下へ同一相対構造でバインドし、
+# 無関係なツリーからの干渉を避ける。 結果は window.__result を回収側 (run_measure) が
+# 書き出すため、入力の measure ディレクトリは ro でよい。
+# 外部 <script src> の live fetch を行うためネットワークはデフォルト (bridge) のまま。
+services:
+  bench-playwright:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: jsperf-measure-playwright
+    container_name: jsperf-measure-playwright
+    working_dir: /workspace
+    init: true
+    environment:
+      PYTHONUNBUFFERED: "1"
+      UV_LINK_MODE: copy
+      # コンテナ内の Python 用 playwright ブラウザはイメージ同梱のものを使う
+      PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
+    volumes:
+      # uv run が hayalab を解決するためのルート要素 (README.md は pyproject の readme 参照先)
+      - ../../../../src:/workspace/src:ro
+      - ../../../../pyproject.toml:/workspace/pyproject.toml:ro
+      - ../../../../uv.lock:/workspace/uv.lock:ro
+      - ../../../../README.md:/workspace/README.md:ro
+      # 実行スクリプト
+      - ../../../../experiments/jsperf/measure/Playwright:/workspace/experiments/jsperf/measure/Playwright:ro
+      # 入力 (measure ハーネス)。ブラウザはファイルに書けないため ro でよい
+      - ../../../../data/jsPerf/Playwright/measure:/workspace/data/jsPerf/Playwright/measure:ro
+      # 集約結果の出力
+      - ../../../../outputs/jsperf/measure/Playwright:/workspace/outputs/jsperf/measure/Playwright:rw

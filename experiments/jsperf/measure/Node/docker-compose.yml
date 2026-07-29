@@ -1,0 +1,28 @@
+# Node 実行時間計測コンテナ (最小マウント)
+# 計測に必要なパスのみを /workspace 配下へ同一相対構造でバインドし、
+# 無関係なツリー (.git / 他の data・outputs / 他 experiments) からの干渉を避ける。
+# 入力の measure ディレクトリは、各ハーネスが result.json を書き出すため rw。
+services:
+  bench-node:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: jsperf-measure-node
+    container_name: jsperf-measure-node
+    working_dir: /workspace
+    # NODE_PATH はイメージ側でビルド時にインストールした /opt/npm/node_modules を指す (Dockerfile)
+    environment:
+      PYTHONUNBUFFERED: "1"
+      UV_LINK_MODE: copy
+    volumes:
+      # uv run が hayalab を解決するためのルート要素 (README.md は pyproject の readme 参照先)
+      - ../../../../src:/workspace/src:ro
+      - ../../../../pyproject.toml:/workspace/pyproject.toml:ro
+      - ../../../../uv.lock:/workspace/uv.lock:ro
+      - ../../../../README.md:/workspace/README.md:ro
+      # 実行スクリプト (node_modules はイメージ側 /opt/npm にあるためここには不要)
+      - ../../../../experiments/jsperf/measure/Node:/workspace/experiments/jsperf/measure/Node:ro
+      # 入力 (measure ハーネス) + result.json 書き出し
+      - ../../../../data/jsPerf/Node/measure:/workspace/data/jsPerf/Node/measure:rw
+      # 集約結果の出力
+      - ../../../../outputs/jsperf/measure/Node:/workspace/outputs/jsperf/measure/Node:rw
