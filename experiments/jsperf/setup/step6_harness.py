@@ -3,7 +3,7 @@
 Step 4 の成功タグ (tags.jsonl) から Step 5 と同一の振り分けロジックを再計算し、各 test を
 実行環境ごとに Step 1〜4 の整形方法に忠実な計測ハーネスへ整形して measure/ 配下へ配置する。
 
-振り分け (Step 5 と同一。step6 内で tags.jsonl から再計算する):
+振り分け:
 1. どの環境の成功タグも付かない test を除外する。
 2. 残った test が 2 未満のベンチマークは除外する (ペア不成立)。
 3. 残った test 全体が同一環境で成功しているベンチマークを振り分ける:
@@ -50,7 +50,8 @@ from hayalab.config import PathConfig
 
 # --- Constants (計測ハイパーパラメータ) ----------------------------
 K_WARMUP: int = 5  # ウォームアップラウンド数 (計測破棄)
-N_BATCH: int = 1000  # 1 バッチの反復ユニット数
+N_BATCH_NODE: int = 100  # 1 バッチの反復ユニット数(Node)
+N_BATCH_PLAYWRIGHT: int = 1000  # 1 バッチの反復ユニット数(Playwright)
 M_MEASURE: int = 10  # 本計測ラウンド数 (samples の要素数)
 
 
@@ -97,7 +98,7 @@ def _build_node_measure(slug_id: str, test_idx: int, body: str, result_name: str
         f"const __result_path = __path.join(__dirname, {result_literal});\n"
         f"{prefix}"
         f"const K_WARMUP = {K_WARMUP};\n"
-        f"const N_BATCH = {N_BATCH};\n"
+        f"const N_BATCH = {N_BATCH_NODE};\n"
         f"const M_MEASURE = {M_MEASURE};\n"
         f"const meta = {meta_literal};\n"
         "function _iteration_unit() {\n"
@@ -136,7 +137,7 @@ def _build_playwright_measure(slug_id: str, test_idx: int, page_html: str, progr
         "<script>\n"
         "(() => {\n"
         f"  const K_WARMUP = {K_WARMUP};\n"
-        f"  const N_BATCH = {N_BATCH};\n"
+        f"  const N_BATCH = {N_BATCH_PLAYWRIGHT};\n"
         f"  const M_MEASURE = {M_MEASURE};\n"
         f"  const src = {src_literal};\n"
         f"  const out = {meta_literal};\n"
@@ -189,6 +190,8 @@ if __name__ == "__main__":
     # --- Section 2: タグ読み込み + 振り分け再計算 ---
     tags: list[dict] = hayalab.read_jsonl(STEP4_TAGS)
     bench_tags: dict[str, list[dict]] = defaultdict(list)
+    # テスト用
+    tags = tags[0:50]
     for t in tags:
         bench_tags[t["slug_id"]].append(t)
     print(f"[step6] benchmarks total: {len(bench_tags)}  tests total: {len(tags)}")
@@ -259,7 +262,8 @@ if __name__ == "__main__":
     # --- Section 4: 集計 (summary.json) ---
     summary = {
         "k_warmup": K_WARMUP,
-        "n_batch": N_BATCH,
+        "n_batch_node": N_BATCH_NODE,
+        "n_batch_playwright": N_BATCH_PLAYWRIGHT,
         "m_measure": M_MEASURE,
         "dispatch_counts": dict(sorted(dispatch_counts.items())),
         "node_measure_written": node_written,
@@ -271,7 +275,7 @@ if __name__ == "__main__":
     hayalab.write_json(STEP6_OUT / "summary.json", summary)
 
     # --- Section 5: 進捗レポート ---
-    print(f"[step6] K_WARMUP={K_WARMUP} N_BATCH={N_BATCH} M_MEASURE={M_MEASURE}")
+    print(f"[step6] K_WARMUP={K_WARMUP} N_BATCH_NODE={N_BATCH_NODE} N_BATCH_PLAYWRIGHT={N_BATCH_PLAYWRIGHT} M_MEASURE={M_MEASURE}")
     print(f"[step6] dispatch: {dict(sorted(dispatch_counts.items()))}")
     print(f"[step6] node measure:       {node_written} (node) + {npm_written} (npm)  (missing: {node_missing})")
     print(f"[step6] playwright measure: {pw_written}  (missing: {pw_missing})")
