@@ -44,7 +44,7 @@ from hayalab.config import PathConfig
 
 # --- Constants ------------------------------------------------------
 NODE_BIN: str = "node"
-TIMEOUT_SEC: float = 1000.0  # per-test タイムアウト (重いユニットは打ち切って timeout 記録)
+TIMEOUT_SEC: float = 180000.0  # per-test タイムアウト (重いユニットは打ち切って timeout 記録)
 PROGRESS_EVERY: int = 100
 
 

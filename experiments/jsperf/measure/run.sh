@@ -3,8 +3,8 @@
 # 各環境内では複数シャード (Node 8 / Playwright 4) を別々の物理コアに pin した Docker
 # コンテナで擬似並列に計測し、完了後に merge_shards.py で results.jsonl に結合する。
 # 同一ベンチ (ペア) は同一シャードに割り当てられるため、ペア内の相対比較の妥当性は保たれる。
-# コア割当・メモリは各 docker-compose.yml のデフォルト (この機の NUMA/物理コアに合わせ済み)
-# を使う。別ホストでは NODE_SHARD*_CPUS / PW_SHARD*_CPUS / NODE_SHARD_MEM / PW_SHARD_MEM で上書き。
+# コア割当は各 docker-compose.yml のデフォルト (この機の NUMA/物理コアに合わせ済み) を使う。
+# 別ホストでは NODE_SHARD*_CPUS / PW_SHARD*_CPUS で上書き。メモリは 180GiB と潤沢なため無制限。
 #
 # 進捗の確認方法 (実行中):
 #   - docker compose up が全シャードのログを流す

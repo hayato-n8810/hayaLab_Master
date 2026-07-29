@@ -38,48 +38,40 @@ services:
     <<: *node-base
     container_name: jsperf-measure-node-0
     cpuset: "${NODE_SHARD0_CPUS:-0,24}"
-    mem_limit: "${NODE_SHARD_MEM:-20g}"
     command: uv run python experiments/jsperf/measure/Node/run_measure.py --shard 0 --num-shards 8
   bench-node-shard1:
     <<: *node-base
     container_name: jsperf-measure-node-1
     cpuset: "${NODE_SHARD1_CPUS:-1,25}"
-    mem_limit: "${NODE_SHARD_MEM:-20g}"
     command: uv run python experiments/jsperf/measure/Node/run_measure.py --shard 1 --num-shards 8
   bench-node-shard2:
     <<: *node-base
     container_name: jsperf-measure-node-2
     cpuset: "${NODE_SHARD2_CPUS:-2,26}"
-    mem_limit: "${NODE_SHARD_MEM:-20g}"
     command: uv run python experiments/jsperf/measure/Node/run_measure.py --shard 2 --num-shards 8
   bench-node-shard3:
     <<: *node-base
     container_name: jsperf-measure-node-3
     cpuset: "${NODE_SHARD3_CPUS:-3,27}"
-    mem_limit: "${NODE_SHARD_MEM:-20g}"
     command: uv run python experiments/jsperf/measure/Node/run_measure.py --shard 3 --num-shards 8
   # --- NUMA1 (物理コア 12-15) ---
   bench-node-shard4:
     <<: *node-base
     container_name: jsperf-measure-node-4
     cpuset: "${NODE_SHARD4_CPUS:-12,36}"
-    mem_limit: "${NODE_SHARD_MEM:-20g}"
     command: uv run python experiments/jsperf/measure/Node/run_measure.py --shard 4 --num-shards 8
   bench-node-shard5:
     <<: *node-base
     container_name: jsperf-measure-node-5
     cpuset: "${NODE_SHARD5_CPUS:-13,37}"
-    mem_limit: "${NODE_SHARD_MEM:-20g}"
     command: uv run python experiments/jsperf/measure/Node/run_measure.py --shard 5 --num-shards 8
   bench-node-shard6:
     <<: *node-base
     container_name: jsperf-measure-node-6
     cpuset: "${NODE_SHARD6_CPUS:-14,38}"
-    mem_limit: "${NODE_SHARD_MEM:-20g}"
     command: uv run python experiments/jsperf/measure/Node/run_measure.py --shard 6 --num-shards 8
   bench-node-shard7:
     <<: *node-base
     container_name: jsperf-measure-node-7
     cpuset: "${NODE_SHARD7_CPUS:-15,39}"
-    mem_limit: "${NODE_SHARD_MEM:-20g}"
     command: uv run python experiments/jsperf/measure/Node/run_measure.py --shard 7 --num-shards 8

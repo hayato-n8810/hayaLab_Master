@@ -41,24 +41,20 @@ services:
     <<: *pw-base
     container_name: jsperf-measure-playwright-0
     cpuset: "${PW_SHARD0_CPUS:-0,1,24,25}"
-    mem_limit: "${PW_SHARD_MEM:-40g}"
     command: uv run python experiments/jsperf/measure/Playwright/run_measure.py --shard 0 --num-shards 4
   bench-playwright-shard1:
     <<: *pw-base
     container_name: jsperf-measure-playwright-1
     cpuset: "${PW_SHARD1_CPUS:-2,3,26,27}"
-    mem_limit: "${PW_SHARD_MEM:-40g}"
     command: uv run python experiments/jsperf/measure/Playwright/run_measure.py --shard 1 --num-shards 4
   # --- NUMA1 (物理コア 12-15) ---
   bench-playwright-shard2:
     <<: *pw-base
     container_name: jsperf-measure-playwright-2
     cpuset: "${PW_SHARD2_CPUS:-12,13,36,37}"
-    mem_limit: "${PW_SHARD_MEM:-40g}"
     command: uv run python experiments/jsperf/measure/Playwright/run_measure.py --shard 2 --num-shards 4
   bench-playwright-shard3:
     <<: *pw-base
     container_name: jsperf-measure-playwright-3
     cpuset: "${PW_SHARD3_CPUS:-14,15,38,39}"
-    mem_limit: "${PW_SHARD_MEM:-40g}"
     command: uv run python experiments/jsperf/measure/Playwright/run_measure.py --shard 3 --num-shards 4
