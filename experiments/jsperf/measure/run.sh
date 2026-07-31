@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # jsPerf 実行時間計測を Node -> Playwright の順に (環境間は直列で) 実行する。
-# 各環境内では複数シャード (Node 8 / Playwright 4) を別々の物理コアに pin した Docker
+# 各環境内では複数シャード (Node 16 / Playwright 8) を別々の物理コアに pin した Docker
 # コンテナで擬似並列に計測し、完了後に merge_shards.py で results.jsonl に結合する。
 # 同一ベンチ (ペア) は同一シャードに割り当てられるため、ペア内の相対比較の妥当性は保たれる。
 # コア割当は各 docker-compose.yml のデフォルト (この機の NUMA/物理コアに合わせ済み) を使う。
