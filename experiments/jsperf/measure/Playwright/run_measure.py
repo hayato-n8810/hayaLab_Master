@@ -23,6 +23,15 @@ results.jsonl は完了順に逐次追記し、終了時に (slug_id, test_idx) 
 必ず同一シャードに割り当てるため、ペアは 1 つの実行環境で計測され相対比較の妥当性が保たれる。
 分割時の出力は results.shard{i}.jsonl、HTTP ポートは PORT+i にずらす。
 
+`--resume` を付けると本計測の results ファイルを読み取り専用で参照し、未完了のベンチだけを
+計測する。本計測の成果物は書き換えず、再計測分は results_retry 系列へ分離して出力するため、
+merge 前の原本は常に保全される。`--redo-status error` のように status を指定すると、その
+status のレコードは完了済みでも未計測扱いにする。
+
+再計測時のシャード割当は本計測の割当を引き継がず、未完了ベンチを全シャードへ均等に再配分する
+(本計測で 1 シャードだけが残っても全コアで分担できる)。未完了判定はベンチ単位で行い、部分的に
+計測済みのベンチは全 test を計測し直す (ペア内の全 test を同一コア・同一セッションに揃える)。
+
 入力:
 - `data/jsPerf/Playwright/measure/<slug_id>/bench_<i>.measure.html` (step6 が配置)
 
@@ -30,6 +39,8 @@ results.jsonl は完了順に逐次追記し、終了時に (slug_id, test_idx) 
 - `results.jsonl` (分割時は `results.shard{i}.jsonl`): per-test 計測結果
   (slug_id, test_idx, status, batch, warmup, rounds, samples_ms, elapsed_sec)
 - `summary.json` (分割時は `summary.shard{i}.json`): 集計 (status 内訳、経過時間)
+- `--resume` 時は上記を読むだけで、`results_retry.shard{i}.jsonl` /
+  `summary_retry.shard{i}.json` に再計測分のみを書き出す (レコード schema は同一)
 """
 
 from __future__ import annotations
@@ -48,6 +59,7 @@ from playwright.async_api import async_playwright
 
 import hayalab
 from hayalab.config import PathConfig
+from hayalab.jsperf import measure as jsperf_measure
 
 # --- Constants ------------------------------------------------------
 PORT: int = 8500
@@ -57,6 +69,18 @@ PROGRESS_EVERY: int = 100
 
 
 # --- Helpers (複数回呼び出し / per-record worker) --------------------
+def _parse_test_idx(measure_html: Path) -> int:
+    """`bench_<i>.measure.html` のパスから test_idx を取り出す.
+
+    Args:
+        measure_html: `bench_<i>.measure.html` のパス.
+
+    Returns:
+        test のインデックス i。
+    """
+    return int(measure_html.stem.split(".")[0].split("_")[1])  # "bench_<i>.measure" → i
+
+
 class _CoepHandler(SimpleHTTPRequestHandler):
     """docroot 配信 + COOP/COEP ヘッダ付与を行うローカル HTTP ハンドラ."""
 
@@ -158,6 +182,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Playwright 実行時間計測 (ベンチ単位シャード対応).")
     parser.add_argument("--shard", type=int, default=0, help="担当シャード番号 (0-based)")
     parser.add_argument("--num-shards", type=int, default=1, help="総シャード数 (1 = 分割なし)")
+    parser.add_argument("--resume", action="store_true", help="既存 results を参照し、未計測分のみを results_retry へ出力する")
+    parser.add_argument("--redo-status", default="", help="--resume 時に再計測対象へ含める status のカンマ区切り (例: error)")
     args = parser.parse_args()
     if not (0 <= args.shard < args.num_shards):
         raise SystemExit(f"invalid shard: shard={args.shard} num_shards={args.num_shards}")
@@ -173,39 +199,71 @@ if __name__ == "__main__":
     # ポートはシャードごとにずらす (同一ホスト直実行でも衝突しないように)
     port = PORT + args.shard
 
-    # --- Section 2: 計測対象の列挙 (ベンチ単位シャード; 同一 slug_id は同一シャード) ---
+    # --- Section 2: 計測対象の列挙 ---
     all_files = sorted(MEASURE_ROOT.glob("*/bench_*.measure.html"))
-    uniq_slugs: list[str] = sorted({p.parent.name for p in all_files})
-    shard_slugs: set[str] = {s for idx, s in enumerate(uniq_slugs) if idx % args.num_shards == args.shard}
+    tests_by_slug: dict[str, list[int]] = {}
+    for p in all_files:
+        tests_by_slug.setdefault(p.parent.name, []).append(_parse_test_idx(p))
+    suffix = f".shard{args.shard}" if args.num_shards > 1 else ""
+    results_path = OUT / f"results{suffix}.jsonl"
+    summary_path = OUT / f"summary{suffix}.json"
+
+    # --- Section 3: 担当ベンチの決定 (同一 slug_id は同一シャード = 同一コア) ---
+    if args.resume:
+        # 本計測の成果物は参照のみ。再計測分は別系列へ出して原本を保全する
+        results_path = OUT / f"results_retry{suffix}.jsonl"
+        summary_path = OUT / f"summary_retry{suffix}.json"
+        redo_status: set[str] = {s.strip() for s in args.redo_status.split(",") if s.strip()}
+        # 全シャードが同じ done 集合を見るよう、参照元は全コンテナ共通のファイルに限る
+        # (自分の出力を混ぜると再配分がシャード間でずれて取りこぼし・二重計測が起きる)
+        done_keys: set[tuple[str, int]] = set()
+        for path in (*sorted(OUT.glob("results.shard*.jsonl")), OUT / "results.jsonl", OUT / "result_retry.jsonl"):
+            if path.exists():
+                done_keys |= {(r["slug_id"], r["test_idx"]) for r in hayalab.read_jsonl(path) if r["status"] not in redo_status}
+        # 残りベンチを全シャードへ均等に再配分する (本計測の割当は引き継がない)
+        target_slugs = jsperf_measure.incomplete_slugs(tests_by_slug, done_keys)
+        print(f"[measure-pw] shard {args.shard}: resume: done {len(done_keys)} tests, incomplete {len(target_slugs)} benchmarks (redo_status={sorted(redo_status)})")
+    else:
+        target_slugs = sorted(tests_by_slug)
+
+    shard_slugs = jsperf_measure.assign_shard_slugs(target_slugs, args.num_shards, args.shard)
+    skip: set[tuple[str, int]] = set()
+    if args.resume and results_path.exists():
+        # 同一セッション内で自分が落ちた場合の再開分だけを取り除く (シャード割当には影響しない)
+        skip = {(r["slug_id"], r["test_idx"]) for r in hayalab.read_jsonl(results_path) if r["status"] not in redo_status}
     jobs: list[tuple[str, int, str]] = []
     for p in all_files:
-        if p.parent.name not in shard_slugs:
+        test_idx = _parse_test_idx(p)
+        if p.parent.name not in shard_slugs or (p.parent.name, test_idx) in skip:
             continue
-        test_idx = int(p.stem.split(".")[0].split("_")[1])  # "bench_<i>.measure" → i
         jobs.append((p.parent.name, test_idx, p.relative_to(MEASURE_ROOT).as_posix()))
-    suffix = f".shard{args.shard}" if args.num_shards > 1 else ""
     print(f"[measure-pw] shard {args.shard}/{args.num_shards}: {len(shard_slugs)} benchmarks, {len(jobs)} tests (timeout={PAGE_TIMEOUT_MS}ms/test)")
 
-    # --- Section 3: ローカル HTTP サーバ起動 (docroot = measure ルート) ---
+    # --- Section 4: ローカル HTTP サーバ起動 (docroot = measure ルート) ---
     handler = partial(_CoepHandler, directory=str(MEASURE_ROOT))
     httpd = ThreadingHTTPServer(("127.0.0.1", port), handler)
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     base_url = f"http://127.0.0.1:{port}"
     print(f"[measure-pw] http server: {base_url}  (docroot={MEASURE_ROOT}, coep={COEP_MODE})")
 
-    # --- Section 4: 直列実行 (results.jsonl へ逐次追記) ---
-    results_path = OUT / f"results{suffix}.jsonl"
+    # --- Section 5: 直列実行 (results ファイルへ逐次追記) ---
+    # --resume で既存の再計測分があるときは追記モードにし、途中まで計測済みの分を失わない
+    append = args.resume and results_path.exists()
     start = time.perf_counter()
-    with open(results_path, "w", encoding="utf-8") as fp:
+    with open(results_path, "a" if append else "w", encoding="utf-8") as fp:
         results: list[dict] = asyncio.run(_measure_all(jobs, base_url, PAGE_TIMEOUT_MS, fp))
     elapsed_sec = time.perf_counter() - start
     httpd.shutdown()
 
-    # --- Section 5: 確定版 (ソート) 書き戻し ---
-    results.sort(key=lambda r: (r["slug_id"], r["test_idx"]))
+    # --- Section 6: 確定版 (重複排除 + ソート) 書き戻し ---
+    # 追記モードでは過去分も含めてファイルから読み直し、同一キーは後勝ちで一意化する
+    if append:
+        results = list(hayalab.read_jsonl(results_path))
+    by_key = {(r["slug_id"], r["test_idx"]): r for r in results}
+    results = sorted(by_key.values(), key=lambda r: (r["slug_id"], r["test_idx"]))
     hayalab.write_jsonl(results_path, results)
 
-    # --- Section 6: 集計 (summary.json) ---
+    # --- Section 7: 集計 (summary.json) ---
     status_counts: Counter[str] = Counter(r["status"] for r in results)
     summary = {
         "env": "playwright",
@@ -217,9 +275,9 @@ if __name__ == "__main__":
         "total_tests": len(results),
         "status_counts": {k: status_counts.get(k, 0) for k in ("success", "error", "timeout")},
     }
-    hayalab.write_json(OUT / f"summary{suffix}.json", summary)
+    hayalab.write_json(summary_path, summary)
 
-    # --- Section 7: 進捗レポート ---
+    # --- Section 8: 進捗レポート ---
     print(f"[measure-pw] shard {args.shard}/{args.num_shards} done, elapsed: {elapsed_sec:.1f}s")
     print(f"[measure-pw] status_counts: {summary['status_counts']}")
     print(f"[measure-pw] outputs: {results_path}")

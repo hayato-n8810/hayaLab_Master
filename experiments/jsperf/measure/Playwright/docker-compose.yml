@@ -10,6 +10,9 @@
 #   物理コア i = 論理 {i, i+24}。 NUMA0=物理0-11、NUMA1=物理12-23。
 # 各シャードに 2 物理コア (Chromium の複数スレッド用) を専有させ、ソケットを跨がない。
 # 各ソケット物理 12 コア中 8 コアを使用し、残り 4 コアは OS/Docker/親プロセス用に予約。
+#
+# PW_MEASURE_ARGS で run_measure.py への追加引数を全シャードに渡す
+# (例: PW_MEASURE_ARGS="--resume" で未完了ベンチのみを全シャードへ均等再配分して再計測)。
 x-pw-base: &pw-base
   build:
     context: .
@@ -41,40 +44,40 @@ services:
     <<: *pw-base
     container_name: jsperf-measure-playwright-0
     cpuset: "${PW_SHARD0_CPUS:-0,1,24,25}"
-    command: uv run python experiments/jsperf/measure/Playwright/run_measure.py --shard 0 --num-shards 8
+    command: uv run python experiments/jsperf/measure/Playwright/run_measure.py --shard 0 --num-shards 8 ${PW_MEASURE_ARGS:-}
   bench-playwright-shard1:
     <<: *pw-base
     container_name: jsperf-measure-playwright-1
     cpuset: "${PW_SHARD1_CPUS:-2,3,26,27}"
-    command: uv run python experiments/jsperf/measure/Playwright/run_measure.py --shard 1 --num-shards 8
+    command: uv run python experiments/jsperf/measure/Playwright/run_measure.py --shard 1 --num-shards 8 ${PW_MEASURE_ARGS:-}
   bench-playwright-shard2:
     <<: *pw-base
     container_name: jsperf-measure-playwright-2
     cpuset: "${PW_SHARD2_CPUS:-4,5,28,29}"
-    command: uv run python experiments/jsperf/measure/Playwright/run_measure.py --shard 2 --num-shards 8
+    command: uv run python experiments/jsperf/measure/Playwright/run_measure.py --shard 2 --num-shards 8 ${PW_MEASURE_ARGS:-}
   bench-playwright-shard3:
     <<: *pw-base
     container_name: jsperf-measure-playwright-3
     cpuset: "${PW_SHARD3_CPUS:-6,7,30,31}"
-    command: uv run python experiments/jsperf/measure/Playwright/run_measure.py --shard 3 --num-shards 8
+    command: uv run python experiments/jsperf/measure/Playwright/run_measure.py --shard 3 --num-shards 8 ${PW_MEASURE_ARGS:-}
   # --- NUMA1 (物理コア 12-19) ---
   bench-playwright-shard4:
     <<: *pw-base
     container_name: jsperf-measure-playwright-4
     cpuset: "${PW_SHARD4_CPUS:-12,13,36,37}"
-    command: uv run python experiments/jsperf/measure/Playwright/run_measure.py --shard 4 --num-shards 8
+    command: uv run python experiments/jsperf/measure/Playwright/run_measure.py --shard 4 --num-shards 8 ${PW_MEASURE_ARGS:-}
   bench-playwright-shard5:
     <<: *pw-base
     container_name: jsperf-measure-playwright-5
     cpuset: "${PW_SHARD5_CPUS:-14,15,38,39}"
-    command: uv run python experiments/jsperf/measure/Playwright/run_measure.py --shard 5 --num-shards 8
+    command: uv run python experiments/jsperf/measure/Playwright/run_measure.py --shard 5 --num-shards 8 ${PW_MEASURE_ARGS:-}
   bench-playwright-shard6:
     <<: *pw-base
     container_name: jsperf-measure-playwright-6
     cpuset: "${PW_SHARD6_CPUS:-16,17,40,41}"
-    command: uv run python experiments/jsperf/measure/Playwright/run_measure.py --shard 6 --num-shards 8
+    command: uv run python experiments/jsperf/measure/Playwright/run_measure.py --shard 6 --num-shards 8 ${PW_MEASURE_ARGS:-}
   bench-playwright-shard7:
     <<: *pw-base
     container_name: jsperf-measure-playwright-7
     cpuset: "${PW_SHARD7_CPUS:-18,19,42,43}"
-    command: uv run python experiments/jsperf/measure/Playwright/run_measure.py --shard 7 --num-shards 8
+    command: uv run python experiments/jsperf/measure/Playwright/run_measure.py --shard 7 --num-shards 8 ${PW_MEASURE_ARGS:-}
