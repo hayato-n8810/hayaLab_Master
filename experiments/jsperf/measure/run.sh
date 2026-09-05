@@ -43,8 +43,8 @@ run_env () {
   docker compose -f "$compose" up 2>&1 | tee "$outdir/run${RUN_LOG_SUFFIX:-}.log"
   docker compose -f "$compose" down
 
-  echo "[run] === $name: シャード結果を結合 ==="
-  uv run python "$HERE/merge_shards.py" --env "$name"
+  # echo "[run] === $name: シャード結果を結合 ==="
+  # uv run python "$HERE/merge_shards.py" --env "$name"
 
   echo "[run] === $name: 完了 (結果: $outdir/results.jsonl) ==="
 }
