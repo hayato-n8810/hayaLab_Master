@@ -11,6 +11,7 @@ dependencies = [
     "apted>=1.0.3",
     "beautifulsoup4>=4.15.0",
     "html5lib>=1.1",
+    "ijson>=3.5.1",
     "lxml>=6.1.1",
     "matplotlib>=3.10.8",
     "numpy>=2.4.0",
