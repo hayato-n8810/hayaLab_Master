@@ -1,0 +1,296 @@
+{
+  "version": 1,
+  "ignore_names": ["(", ")", "[", "]", "{", "}", ",", ";", ".", "\"", "'"],
+  "patterns": [
+    {
+      "id": 1,
+      "key": "for_in_has_own",
+      "description": "for-in ループと hasOwnProperty による列挙",
+      "source": "for (var key in obj) { if (obj.hasOwnProperty(key)) { } }",
+      "root": {
+        "name": "for_in_statement",
+        "children": [
+          { "name": "identifier", "bind": "key" },
+          { "name": "in" },
+          { "name": "*", "bind": "obj" },
+          {
+            "name": "if_statement",
+            "match": "descendant",
+            "children": [
+              {
+                "name": "call_expression",
+                "match": "descendant",
+                "children": [
+                  {
+                    "name": "member_expression",
+                    "children": [
+                      { "name": "*", "bind": "obj" },
+                      { "name": "property_identifier", "value": "hasOwnProperty" }
+                    ]
+                  },
+                  {
+                    "name": "arguments",
+                    "children": [{ "name": "identifier", "bind": "key" }]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": 2,
+      "key": "substr_single_char",
+      "description": "長さ 1 の部分文字列取得に substr() を使用",
+      "source": "str.substr(i, 1);",
+      "root": {
+        "name": "call_expression",
+        "children": [
+          {
+            "name": "member_expression",
+            "children": [
+              { "name": "*", "bind": "recv" },
+              { "name": "property_identifier", "value": "substr" }
+            ]
+          },
+          {
+            "name": "arguments",
+            "children_mode": "exact",
+            "children": [{ "name": "*" }, { "name": "number", "value": "1" }]
+          }
+        ]
+      }
+    },
+    {
+      "id": 3,
+      "key": "string_cast",
+      "description": "文字列変換に String() を使用",
+      "source": "starts = String(starts);",
+      "root": {
+        "name": "call_expression",
+        "children": [
+          { "name": "identifier", "value": "String" },
+          {
+            "name": "arguments",
+            "children_mode": "exact",
+            "children": [{ "name": "*" }]
+          }
+        ]
+      }
+    },
+    {
+      "id": 4,
+      "key": "jquery_html_empty",
+      "description": "jQuery の empty() ではなく html('') を使用",
+      "source": "body.html(\"\");",
+      "root": {
+        "name": "call_expression",
+        "children": [
+          {
+            "name": "member_expression",
+            "children": [
+              { "name": "*", "bind": "recv" },
+              { "name": "property_identifier", "value": "html" }
+            ]
+          },
+          {
+            "name": "arguments",
+            "children_mode": "exact",
+            "children": [{ "name": "string", "children_mode": "exact", "children": [] }]
+          }
+        ]
+      }
+    },
+    {
+      "id": 5,
+      "key": "substr_prefix_cmp",
+      "description": "先頭文字列の比較に substr() を使用",
+      "source": "key.substr(0, 2) !== \"$$\";",
+      "root": {
+        "name": "binary_expression",
+        "children": [
+          {
+            "name": "call_expression",
+            "children": [
+              {
+                "name": "member_expression",
+                "children": [
+                  { "name": "*", "bind": "recv" },
+                  { "name": "property_identifier", "value": "substr" }
+                ]
+              },
+              {
+                "name": "arguments",
+                "children_mode": "exact",
+                "children": [
+                  { "name": "number", "value": "0" },
+                  { "name": "number", "value": "2" }
+                ]
+              }
+            ]
+          },
+          { "name": ["===", "!==", "==", "!="] },
+          { "name": "string" }
+        ]
+      }
+    },
+    {
+      "id": 6,
+      "key": "split_join_chain",
+      "description": "文字列置換に split() と join() の連鎖を使用",
+      "source": "str.split(\"'\").join(\" \\\\ ' \");",
+      "root": {
+        "name": "call_expression",
+        "children": [
+          {
+            "name": "member_expression",
+            "children": [
+              {
+                "name": "call_expression",
+                "children": [
+                  {
+                    "name": "member_expression",
+                    "children": [
+                      { "name": "*", "bind": "recv" },
+                      { "name": "property_identifier", "value": "split" }
+                    ]
+                  },
+                  { "name": "arguments" }
+                ]
+              },
+              { "name": "property_identifier", "value": "join" }
+            ]
+          },
+          { "name": "arguments" }
+        ]
+      }
+    },
+    {
+      "id": 7,
+      "key": "to_string_call",
+      "description": "型判定に toString.call() の文字列比較を使用",
+      "source": "if (toString.call(err) === \"[object Error]\") { }",
+      "root": {
+        "name": "binary_expression",
+        "children": [
+          {
+            "name": "call_expression",
+            "children": [
+              {
+                "name": "member_expression",
+                "children": [
+                  { "name": "*" },
+                  { "name": "property_identifier", "value": "call" }
+                ]
+              },
+              {
+                "name": "arguments",
+                "children_mode": "exact",
+                "children": [{ "name": "*" }]
+              }
+            ]
+          },
+          { "name": ["===", "==", "!==", "!="] },
+          {
+            "name": "string",
+            "children": [
+              {
+                "name": "string_fragment",
+                "value": { "regex": "^\\[object [^\\]]*\\]$" }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": 8,
+      "key": "modulo_even_odd",
+      "description": "偶奇判定に % 2 を使用",
+      "source": "index % 2 == 0;",
+      "root": {
+        "name": "binary_expression",
+        "children": [
+          {
+            "name": "binary_expression",
+            "children": [
+              { "name": "*" },
+              { "name": "%" },
+              { "name": "number", "value": ["2", "0x2", "0X2"] }
+            ]
+          },
+          { "name": ["==", "===", "!=", "!=="] },
+          { "name": "number", "value": ["0", "1"] }
+        ]
+      }
+    },
+    {
+      "id": 9,
+      "key": "higher_order_array",
+      "description": "配列処理に高階関数を使用",
+      "source": "styles.reduce(function (str, name) { return; }, str);",
+      "root": {
+        "name": "call_expression",
+        "children": [
+          {
+            "name": "member_expression",
+            "children": [
+              { "name": "*", "bind": "recv" },
+              {
+                "name": "property_identifier",
+                "value": ["reduce", "reduceRight", "map", "forEach", "filter", "some", "every"]
+              }
+            ]
+          },
+          {
+            "name": "arguments",
+            "children": [
+              {
+                "name": ["function", "function_expression", "arrow_function"],
+                "children": [{ "name": "*" }]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": 10,
+      "key": "slice_join_single",
+      "description": "arguments の配列化と join() の連鎖",
+      "source": "[].slice.call(arguments).join(\" \");",
+      "root": {
+        "name": "call_expression",
+        "children": [
+          {
+            "name": "member_expression",
+            "children": [
+              {
+                "name": "call_expression",
+                "children": [
+                  {
+                    "name": "member_expression",
+                    "children": [
+                      {
+                        "name": "member_expression",
+                        "children": [
+                          { "name": "array", "children_mode": "exact", "children": [] },
+                          { "name": "property_identifier", "value": "slice" }
+                        ]
+                      },
+                      { "name": "property_identifier", "value": "call" }
+                    ]
+                  },
+                  { "name": "arguments" }
+                ]
+              },
+              { "name": "property_identifier", "value": "join" }
+            ]
+          },
+          { "name": "arguments" }
+        ]
+      }
+    }
+  ]
+}
