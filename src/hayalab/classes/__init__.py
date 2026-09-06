@@ -2,7 +2,7 @@
 
 from .codeql import Sarif
 from .feature import ASTFragment, LoopFeature, LoopKind, NodePosition, SyntaxFeature
-from .gumtree import AST, ActionBlock, ASTNode, GumAction, GumDiff
+from .gumtree import AST, ActionBlock, ASTNode, GumAction, GumDiff, TreeContext, TreeMatch, TreePattern
 
 __all__ = [
     # Feature
@@ -17,6 +17,9 @@ __all__ = [
     "GumAction",
     "GumDiff",
     "ActionBlock",
+    "TreePattern",
+    "TreeContext",
+    "TreeMatch",
     # codeql
     "Sarif",
 ]

@@ -1,8 +1,8 @@
 """GumtreeのASTと差分情報を表す型定義モジュール"""
 
-from typing import List, Optional, Tuple
+from typing import Any, Dict, FrozenSet, List, Optional, Tuple
 
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, ConfigDict, model_validator
 
 
 class ASTNode(BaseModel):
@@ -110,6 +110,42 @@ class ActionBlock(BaseModel):
     action_name: str
     action_tree: str
     diff_block: dict[int, ASTNode]
+
+
+class TreePattern(BaseModel):
+    """部分木マッチングの 1 パターン分の仕様"""
+
+    model_config = ConfigDict(frozen=True)
+
+    pattern_id: int  # パターン番号
+    key: str  # パターンの識別名
+    description: str  # パターンの説明
+    root: Dict[str, Any]  # 起点ノードの制約（ノード仕様 dict）
+    ignore_names: FrozenSet[str]  # 子ノード列から除外するノード名の集合
+
+
+class TreeContext(BaseModel):
+    """1 本の AST に対する部分木マッチング用の索引"""
+
+    model_config = ConfigDict(frozen=True)
+
+    nodes: List[ASTNode]  # ASTNode のリスト
+    code: str  # ソースコード文字列
+    children: List[List[int]]  # ノードインデックスごとの直下の子インデックス列
+    subtree_end: List[int]  # ノードインデックスごとの subtree 末尾インデックス（自身を含む）
+    ignore_names: FrozenSet[str]  # 子ノード列から除外するノード名の集合
+
+
+class TreeMatch(BaseModel):
+    """部分木パターンの 1 件のマッチ結果"""
+
+    model_config = ConfigDict(frozen=True)
+
+    pattern_id: int  # パターン番号
+    node_index: int  # 起点ノードのインデックス
+    begin: int  # ソース上の開始バイト位置
+    end: int  # ソース上の終了バイト位置
+    snippet: str  # code[begin:end] を切り詰めた断片
 
 
 # 利用例（メソッドを書く必要すらありません）

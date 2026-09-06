@@ -21,6 +21,7 @@ from .extract import (
 )
 from .gumtree_command import gum_diff, gum_parse
 from .scan import collect_method_name, count_label, find_scope_boundary_index, find_sibling_root_indices
+from .tree_pattern import build_tree_context, find_tree_matches, load_tree_patterns
 
 __all__ = [
     # gumtreeコマンド
@@ -53,4 +54,8 @@ __all__ = [
     "head_scope_brother",
     "head_scope_block_exclude_parent",
     "head_scope_block_include_parent",
+    # 部分木パターンマッチング
+    "load_tree_patterns",
+    "build_tree_context",
+    "find_tree_matches",
 ]
