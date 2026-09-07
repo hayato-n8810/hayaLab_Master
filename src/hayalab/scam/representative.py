@@ -103,3 +103,56 @@ def representative_for_class(
         "representative": {"id": rep["id"], "value": rep["value"]},
         "support": sum(1 for r in rows if r["value"] == rep["value"]),
     }
+
+
+def select_representatives(
+    rows: list[dict[str, Any]],
+    id_to_bigrams: dict[int, frozenset],
+    k: int,
+) -> list[dict[str, Any]]:
+    """1 クラスに対し代表を最大 k 件選ぶ（value が互いに異なるものだけを採る）。
+
+    1 件目は :func:`representative_for_class` と完全に一致する（``k=1`` は既存挙動）。
+    2 件目以降は残りメンバーを「他メンバーへの bigram-Jaccard 平均が大きい順、
+    同点は ``id`` 昇順」で走査し、 既選択の value と異なるものを追加する。
+    同一 value を並べても表示情報が増えないため value 単位で重複を排除する。
+
+    Args:
+        rows: クラスメンバー（``[{"id": int, "value": str}, ...]``）。
+        id_to_bigrams: 中心性計算用の ``mb_id → bigram frozenset``。
+        k: 選ぶ代表の最大件数（1 以上）。
+
+    Returns:
+        ``[{"id", "value", "rank", "strategy"}, ...]``。 ``rank`` は 0 起点の順位、
+        ``strategy`` は 1 件目のみ ``representative_for_class`` の戦略名で、
+        2 件目以降は ``"medoid_next"``。 クラス内の distinct value 数が k 未満なら
+        返る件数も k 未満になる。
+
+    Raises:
+        ValueError: ``k`` が 1 未満のとき。
+    """
+    if k < 1:
+        raise ValueError(f"k must be >= 1, got {k}")
+
+    primary = representative_for_class(rows, id_to_bigrams)
+    first = primary["representative"]
+    selected: list[dict[str, Any]] = [{"id": first["id"], "value": first["value"], "rank": 0, "strategy": primary["strategy"]}]
+    if k == 1 or len(rows) == 1:
+        return selected
+
+    sets = [(r, id_to_bigrams.get(r["id"], frozenset())) for r in rows]
+    centrality: dict[int, float] = {}
+    for r_i, s_i in sets:
+        total = sum(jaccard(s_i, s_j) for r_j, s_j in sets if r_j["id"] != r_i["id"])
+        centrality[r_i["id"]] = total / max(len(sets) - 1, 1)
+
+    seen_values = {first["value"]}
+    ordered = sorted(rows, key=lambda r: (-centrality[r["id"]], r["id"]))
+    for row in ordered:
+        if len(selected) >= k:
+            break
+        if row["id"] == first["id"] or row["value"] in seen_values:
+            continue
+        seen_values.add(row["value"])
+        selected.append({"id": row["id"], "value": row["value"], "rank": len(selected), "strategy": "medoid_next"})
+    return selected
