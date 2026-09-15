@@ -1,0 +1,336 @@
+{
+  "version": 1,
+  "ignore_names": ["(", ")", "[", "]", "{", "}", ",", ";", ".", "\"", "'"],
+  "patterns": [
+    {
+      "id": 1,
+      "key": "object_keys_index_loop",
+      "description": "Object.keys() で得た配列を添字 for ループで走査",
+      "source": "var keys = Object.keys(obj);\nfor (var i = 0, l = keys.length; i < l; i++) {\n  var key = keys[i];\n}",
+      "root": {
+        "name": ["program", "statement_block"],
+        "children": [
+          {
+            "name": ["variable_declaration", "lexical_declaration"],
+            "children": [
+              {
+                "name": "variable_declarator",
+                "children": [
+                  { "name": "identifier", "bind": "arr" },
+                  {
+                    "name": "call_expression",
+                    "children": [
+                      {
+                        "name": "member_expression",
+                        "children": [
+                          { "name": "identifier", "value": "Object" },
+                          { "name": "property_identifier", "value": "keys" }
+                        ]
+                      },
+                      {
+                        "name": "arguments",
+                        "children": [{ "name": "*", "bind": "obj" }]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "name": "for_statement",
+            "children": [
+              {
+                "name": "subscript_expression",
+                "match": "descendant",
+                "children": [{ "name": "identifier", "bind": "arr" }]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": 2,
+      "key": "index_single_char",
+      "description": "長さ 1 の部分文字列取得に添字アクセスを使用",
+      "source": "str[i];",
+      "root": {
+        "name": "subscript_expression",
+        "children_mode": "exact",
+        "children": [{ "name": "*", "bind": "recv" }, { "name": "*" }]
+      }
+    },
+    {
+      "id": 3,
+      "key": "implicit_string_concat",
+      "description": "文字列変換に空文字列との連結による暗黙の型変換を使用",
+      "source": "starts = \"\" + starts;",
+      "root": {
+        "name": "binary_expression",
+        "children": [
+          { "name": "string", "children_mode": "exact", "children": [] },
+          { "name": "+" },
+          { "name": "*", "bind": "value" }
+        ]
+      }
+    },
+    {
+      "id": 4,
+      "key": "jquery_empty_call",
+      "description": "jQuery の empty() を使用",
+      "source": "body.empty();",
+      "root": {
+        "name": "call_expression",
+        "children": [
+          {
+            "name": "member_expression",
+            "children": [
+              { "name": "*", "bind": "recv" },
+              { "name": "property_identifier", "value": "empty" }
+            ]
+          },
+          { "name": "arguments", "children_mode": "exact", "children": [] }
+        ]
+      }
+    },
+    {
+      "id": 5,
+      "key": "char_at_prefix_cmp",
+      "description": "先頭文字列の比較に charAt() の連続比較を使用",
+      "source": "key.charAt(0) !== \"$\" && key.charAt(1) !== \"$\";",
+      "root": {
+        "name": "binary_expression",
+        "children": [
+          {
+            "name": "binary_expression",
+            "children": [
+              {
+                "name": "call_expression",
+                "children": [
+                  {
+                    "name": "member_expression",
+                    "children": [
+                      { "name": "*", "bind": "recv" },
+                      { "name": "property_identifier", "value": "charAt" }
+                    ]
+                  },
+                  {
+                    "name": "arguments",
+                    "children_mode": "exact",
+                    "children": [{ "name": "number" }]
+                  }
+                ]
+              },
+              { "name": ["===", "!==", "==", "!="] },
+              { "name": "string" }
+            ]
+          },
+          { "name": ["&&", "||"] },
+          {
+            "name": "binary_expression",
+            "children": [
+              {
+                "name": "call_expression",
+                "children": [
+                  {
+                    "name": "member_expression",
+                    "children": [
+                      { "name": "*", "bind": "recv" },
+                      { "name": "property_identifier", "value": "charAt" }
+                    ]
+                  },
+                  {
+                    "name": "arguments",
+                    "children_mode": "exact",
+                    "children": [{ "name": "number" }]
+                  }
+                ]
+              },
+              { "name": ["===", "!==", "==", "!="] },
+              { "name": "string" }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": 6,
+      "key": "replace_regex",
+      "description": "文字列置換に正規表現を引数とする replace() を使用",
+      "source": "str.replace(/'/g, \"\\\\'\");",
+      "root": {
+        "name": "call_expression",
+        "children": [
+          {
+            "name": "member_expression",
+            "children": [
+              { "name": "*", "bind": "recv" },
+              { "name": "property_identifier", "value": "replace" }
+            ]
+          },
+          {
+            "name": "arguments",
+            "children_mode": "exact",
+            "children": [{ "name": "regex" }, { "name": "*" }]
+          }
+        ]
+      }
+    },
+    {
+      "id": 7,
+      "key": "instanceof_check",
+      "description": "型判定に instanceof 演算子を使用",
+      "source": "if (err instanceof Error || toString.call(err) === \"[ object Error ]\") { }",
+      "root": {
+        "name": "binary_expression",
+        "children_mode": "exact",
+        "children": [
+          { "name": "*", "bind": "value" },
+          { "name": "instanceof" },
+          { "name": "*", "bind": "type" }
+        ]
+      }
+    },
+    {
+      "id": 8,
+      "key": "bitand_even_odd",
+      "description": "偶奇判定に & 1 を使用",
+      "source": "(index & 1) == 0;",
+      "root": {
+        "name": "binary_expression",
+        "children": [
+          {
+            "name": "binary_expression",
+            "match": "descendant",
+            "children": [
+              { "name": "*" },
+              { "name": "&" },
+              { "name": "number", "value": ["1", "0x1", "0X1"] }
+            ]
+          },
+          { "name": ["==", "===", "!=", "!=="] },
+          { "name": "number", "value": ["0", "1"] }
+        ]
+      }
+    },
+    {
+      "id": 9,
+      "key": "indexed_for_loop",
+      "description": "配列処理に添字 for ループを使用",
+      "source": "for (var i = 0; i < styles.length; i++) {\n  var name = styles[i];\n  str = 0;\n}",
+      "root": {
+        "name": "for_statement",
+        "children": [
+          {
+            "name": ["variable_declaration", "lexical_declaration"],
+            "children": [{ "name": "identifier", "match": "descendant", "bind": "idx" }]
+          },
+          {
+            "name": "expression_statement",
+            "children": [
+              {
+                "name": "binary_expression",
+                "children": [
+                  { "name": "identifier", "bind": "idx" },
+                  { "name": ["<", "<=", ">", ">="] },
+                  {
+                    "name": "member_expression",
+                    "children": [
+                      { "name": "*", "bind": "arr" },
+                      { "name": "property_identifier", "value": "length" }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "name": "update_expression",
+            "children": [{ "name": "identifier", "bind": "idx" }]
+          },
+          {
+            "name": "statement_block",
+            "children": [
+              {
+                "name": "subscript_expression",
+                "match": "descendant",
+                "children": [
+                  { "name": "*", "bind": "arr" },
+                  { "name": "identifier", "bind": "idx" }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": 10,
+      "key": "single_arg_shortcut",
+      "description": "要素数 1 の場合を分岐で処理し，それ以外で slice() と join() の連鎖を使用",
+      "source": "arguments.length === 1 ? arguments[0] + \" \" : [].slice.call(arguments).join(\" \");",
+      "root": {
+        "name": "ternary_expression",
+        "children": [
+          {
+            "name": "binary_expression",
+            "children": [
+              {
+                "name": "member_expression",
+                "children": [
+                  { "name": "*", "bind": "args" },
+                  { "name": "property_identifier", "value": "length" }
+                ]
+              },
+              { "name": ["===", "==", "!==", "!="] },
+              { "name": "number", "value": "1" }
+            ]
+          },
+          {
+            "name": "subscript_expression",
+            "match": "descendant",
+            "children": [
+              { "name": "*", "bind": "args" },
+              { "name": "number", "value": "0" }
+            ]
+          },
+          {
+            "name": "call_expression",
+            "children": [
+              {
+                "name": "member_expression",
+                "children": [
+                  {
+                    "name": "call_expression",
+                    "children": [
+                      {
+                        "name": "member_expression",
+                        "children": [
+                          {
+                            "name": "member_expression",
+                            "children": [
+                              { "name": "array", "children_mode": "exact", "children": [] },
+                              { "name": "property_identifier", "value": "slice" }
+                            ]
+                          },
+                          { "name": "property_identifier", "value": "call" }
+                        ]
+                      },
+                      {
+                        "name": "arguments",
+                        "children": [{ "name": "*", "bind": "args" }]
+                      }
+                    ]
+                  },
+                  { "name": "property_identifier", "value": "join" }
+                ]
+              },
+              { "name": "arguments" }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
