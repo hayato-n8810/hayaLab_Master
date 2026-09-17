@@ -6,6 +6,7 @@
 出力は 4 種類。
 
 - レコード内の全 action の diff / parent_diff / around_parent をそれぞれ統合した JSON
+  （``sigma_1.json`` / ``sigma_2.json`` / ``sigma_3.json``）
 - 3 スコープを 1 本のノード列に畳み，各ノードに ``level`` を付与した JSONL
 
 統合時は base_ast.tree の index 昇順に並べ，重複ノードは 1 件に畳む。
@@ -34,8 +35,11 @@ from hayalab.gumtree.extract import NodePayload
 # 森構築まで精査するレコード数（level 整合と包含関係は全件で検査する）
 FOREST_SAMPLE: int = 3000
 
-# スコープ段とファイル名の対応（level n = SCOPE_KEYS[n-1] まで含む）
+# スコープ段（level n = SCOPE_KEYS[n-1] まで含む）
 SCOPE_KEYS: tuple[str, ...] = ("diff", "parent_diff", "around_parent")
+
+# スコープ段と出力ファイル名の対応（SCOPE_KEYS と同順）
+SIGMA_NAMES: tuple[str, ...] = ("sigma_1", "sigma_2", "sigma_3")
 
 
 # --- Helpers (only those called many times) ------------------------
@@ -94,8 +98,8 @@ if __name__ == "__main__":
     # --- Section 1: パス解決 ---
     config = PathConfig()
     input_path = config.processed / "MBDiff.json"
-    sigma_dir = config.outputs / "saner" / "phase0"
-    scope_paths = {key: sigma_dir / f"cut_{key}.json" for key in SCOPE_KEYS}
+    sigma_dir = config.outputs / "saner" / "approach" / "phase0"
+    scope_paths = {key: sigma_dir / f"{name}.json" for key, name in zip(SCOPE_KEYS, SIGMA_NAMES, strict=True)}
     leveled_path = sigma_dir / "cut_leveled.jsonl"
 
     if not input_path.exists():

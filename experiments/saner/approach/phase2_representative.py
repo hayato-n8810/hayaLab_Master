@@ -36,7 +36,7 @@
 分散が大きく共通要素を見出せないクラスタを事後に選別できる。
 
 出力:
-    outputs/saner/approach/phase2/cells/{level}_BG_tau{NN}/{scope}_representatives.jsonl
+    outputs/saner/approach/phase2/tau{NN}/{level}/{scope}_representatives.jsonl
     outputs/saner/approach/phase2/representative_summary.json
 """
 
@@ -56,9 +56,9 @@ from hayalab.config import PathConfig
 
 # --- Constants (hyperparameters tunable at the top of the file) ----
 # 対象スコープ（phase0 の出力ファイル名と対応する）
-SCOPES: tuple[str, ...] = ("around_parent", "diff", "parent_diff")
+SCOPES: tuple[str, ...] = ("sigma_1", "sigma_2", "sigma_3")
 
-# 一致度閾値の水準（phase1 のセル名と対応する）
+# 一致度閾値の水準（phase1 の出力ディレクトリ名と対応する）
 THRESHOLDS: tuple[float, ...] = (0.6, 0.7, 0.8, 0.9)
 
 # 抽象度の水準
@@ -322,18 +322,18 @@ def _representative(members: list[int], node_lists: list[list[CutNode]], level: 
     }
 
 
-def _process_cell(scope: str, level: str, phase0_dir: Path, phase1_cells: Path, phase2_cells: Path, taus: list[float]) -> list[dict[str, Any]]:
+def _process_cell(scope: str, level: str, phase0_dir: Path, phase1_dir: Path, phase2_dir: Path, taus: list[float]) -> list[dict[str, Any]]:
     """1 組（スコープ × 抽象度）の全閾値について代表を作る。
 
     ProcessPoolExecutor のワーカーから呼ばれる。スコープの切り出しは 1 度だけ読み、
     必要なレコードのノードのみを保持する。
 
     Args:
-        scope: スコープ名（``around_parent`` / ``diff`` / ``parent_diff``）。
+        scope: スコープ名（``sigma_1`` / ``sigma_2`` / ``sigma_3``）。
         level: 抽象度（``"alpha1"`` / ``"alpha2"``）。
         phase0_dir: phase0 の出力ディレクトリ。
-        phase1_cells: phase1 のセルディレクトリ。
-        phase2_cells: phase2 のセルディレクトリ。
+        phase1_dir: phase1 の出力ディレクトリ（``tau{NN}/{level}`` を含む）。
+        phase2_dir: ``tau{NN}/{level}`` を配置する出力ディレクトリ。
         taus: 対象の一致度閾値。
 
     Returns:
@@ -345,7 +345,7 @@ def _process_cell(scope: str, level: str, phase0_dir: Path, phase1_cells: Path, 
     clusters: dict[float, list[dict[str, Any]]] = {}
     needed: set[int] = set()
     for tau in taus:
-        path = phase1_cells / f"{level}_BG_tau{round(tau * 10):02d}" / f"{scope}_clusters.jsonl"
+        path = phase1_dir / f"tau{round(tau * 10):02d}" / level / f"{scope}_clusters.jsonl"
         if not path.exists():
             continue
         rows: list[dict[str, Any]] = []
@@ -360,7 +360,7 @@ def _process_cell(scope: str, level: str, phase0_dir: Path, phase1_cells: Path, 
 
     # 切り出しの読み込み（区切り記号を除き origin_index 昇順に整える）
     nodes_of: dict[int, list[CutNode]] = {}
-    with open(phase0_dir / f"cut_{scope}.json", "rb") as f:
+    with open(phase0_dir / f"{scope}.json", "rb") as f:
         for record in ijson.items(f, "item"):
             if record["id"] not in needed:
                 continue
@@ -372,7 +372,7 @@ def _process_cell(scope: str, level: str, phase0_dir: Path, phase1_cells: Path, 
 
     summary: list[dict[str, Any]] = []
     for tau in sorted(clusters):
-        cell_dir = phase2_cells / f"{level}_BG_tau{round(tau * 10):02d}"
+        cell_dir = phase2_dir / f"tau{round(tau * 10):02d}" / level
         cell_dir.mkdir(parents=True, exist_ok=True)
 
         written = 0
@@ -425,26 +425,25 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     config = PathConfig()
-    phase0_dir = config.outputs / "saner" / "phase0"
-    phase1_cells = config.outputs / "saner" / "approach" / "phase1" / "cells"
+    phase0_dir = config.outputs / "saner" / "approach" / "phase0"
+    phase1_dir = config.outputs / "saner" / "approach" / "phase1"
     phase2_dir = config.outputs / "saner" / "approach" / "phase2"
-    phase2_cells = phase2_dir / "cells"
 
-    missing = [phase0_dir / f"cut_{scope}.json" for scope in args.scopes if not (phase0_dir / f"cut_{scope}.json").exists()]
+    missing = [phase0_dir / f"{scope}.json" for scope in args.scopes if not (phase0_dir / f"{scope}.json").exists()]
     if missing:
         raise FileNotFoundError(f"入力ファイルが見つかりません: {missing}")
-    if not phase1_cells.exists():
-        raise FileNotFoundError(f"phase1 の出力が見つかりません: {phase1_cells}")
-    phase2_cells.mkdir(parents=True, exist_ok=True)
+    if not phase1_dir.exists():
+        raise FileNotFoundError(f"phase1 の出力が見つかりません: {phase1_dir}")
+    phase2_dir.mkdir(parents=True, exist_ok=True)
 
     # --- Section 2: スコープ × 抽象度の組を並列に処理する ---
     jobs = [(scope, level) for scope in args.scopes for level in args.levels]
-    print(f"Output: {phase2_cells}")
+    print(f"Output: {phase2_dir}")
     print(f"jobs={len(jobs)} workers={args.workers} levels={args.levels} scopes={args.scopes} taus={sorted(args.taus)}\n")
 
     summary: list[dict[str, Any]] = []
     with ProcessPoolExecutor(max_workers=args.workers) as pool:
-        futures = {pool.submit(_process_cell, scope, level, phase0_dir, phase1_cells, phase2_cells, sorted(args.taus)): (scope, level) for scope, level in jobs}
+        futures = {pool.submit(_process_cell, scope, level, phase0_dir, phase1_dir, phase2_dir, sorted(args.taus)): (scope, level) for scope, level in jobs}
         for future in as_completed(futures):
             scope, level = futures[future]
             summary.extend(future.result())

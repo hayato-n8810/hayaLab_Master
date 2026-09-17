@@ -36,7 +36,7 @@ Jaccard は ``|A∩B| / (|A| + |B| - |A∩B|)`` として全ペア分を評価�
 ``--floor``（既定は ``--taus`` の最小値）以上に限ってよい。
 
 出力:
-    outputs/saner/approach/phase1/cells/{level}_BG_tau{NN}/{scope}_clusters.jsonl
+    outputs/saner/approach/phase1/tau{NN}/{level}/{scope}_clusters.jsonl
     outputs/saner/approach/phase1/cluster_summary.json
 
 出力 JSONL の 1 行は ``{"cluster_id", "size", "members", "origin"}``。
@@ -61,8 +61,8 @@ from scipy.sparse import csr_matrix
 from hayalab.config import PathConfig
 
 # --- Constants (hyperparameters tunable at the top of the file) ----
-# 入力ファイル名
-INPUT_NAMES: tuple[str, ...] = ("cut_around_parent.json", "cut_diff.json", "cut_parent_diff.json")
+# 入力ファイル名（phase0 のスコープ別切り出し）
+INPUT_NAMES: tuple[str, ...] = ("sigma_1.json", "sigma_2.json", "sigma_3.json")
 
 # 一致度閾値の水準
 THRESHOLDS: tuple[float, ...] = (0.6, 0.7, 0.8, 0.9)
@@ -316,7 +316,7 @@ def _cut(total: int, history: list[tuple[float, int, int]], threshold: float) ->
     return sorted(grouped.values(), key=lambda group: group[0])
 
 
-def _process_cell(input_path: Path, level: str, taus: list[float], floor: float, cells_dir: Path, record_limit: int) -> list[dict[str, Any]]:
+def _process_cell(input_path: Path, level: str, taus: list[float], floor: float, output_dir: Path, record_limit: int) -> list[dict[str, Any]]:
     """1 組（スコープ × 抽象度）の読み込み・クラスタリング・書き出しを行う。
 
     ProcessPoolExecutor のワーカーから呼ばれる。入力は ijson で 1 レコードずつ読み、
@@ -327,7 +327,7 @@ def _process_cell(input_path: Path, level: str, taus: list[float], floor: float,
         level: 抽象度（``"alpha1"`` / ``"alpha2"``）。
         taus: 切断する一致度閾値の列。
         floor: 辺として保持する一致度の下限。
-        cells_dir: 出力セルディレクトリの親。
+        output_dir: ``tau{NN}/{level}`` を配置する出力ディレクトリ。
         record_limit: 先頭から読むレコード数（0 で全件）。
 
     Returns:
@@ -336,7 +336,7 @@ def _process_cell(input_path: Path, level: str, taus: list[float], floor: float,
     Raises:
         RuntimeError: 併合高さが非増加でない場合。
     """
-    scope = input_path.stem.removeprefix("cut_")
+    scope = input_path.stem
     tag = f"{scope} {level}"
 
     # 入力: 有効トークン数で bigram / unigram / 除外に振り分ける
@@ -381,7 +381,7 @@ def _process_cell(input_path: Path, level: str, taus: list[float], floor: float,
         rows.extend((group, "unigram") for group in unigram_groups)
         rows.sort(key=lambda row: row[0][0])
 
-        cell_dir = cells_dir / f"{level}_BG_tau{round(tau * 10):02d}"
+        cell_dir = output_dir / f"tau{round(tau * 10):02d}" / level
         cell_dir.mkdir(parents=True, exist_ok=True)
         with open(cell_dir / f"{scope}_clusters.jsonl", "w", encoding="utf-8") as f:
             for cluster_id, (group, origin) in enumerate(rows):
@@ -422,9 +422,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     config = PathConfig()
-    phase0_dir = config.outputs / "saner" / "phase0"
+    phase0_dir = config.outputs / "saner" / "approach" / "phase0"
     phase1_dir = config.outputs / "saner" / "approach" / "phase1"
-    cells_dir = phase1_dir / "cells"
 
     input_paths = [phase0_dir / name for name in INPUT_NAMES]
     missing = [path for path in input_paths if not path.exists()]
@@ -436,16 +435,16 @@ if __name__ == "__main__":
     floor = args.floor if args.floor is not None else min(args.taus)
     if floor > min(args.taus):
         raise ValueError(f"floor は taus の最小値以下にする: floor={floor} min(taus)={min(args.taus)}")
-    cells_dir.mkdir(parents=True, exist_ok=True)
+    phase1_dir.mkdir(parents=True, exist_ok=True)
 
     # --- Section 2: スコープ × 抽象度の組を並列に処理する ---
     jobs = [(path, level) for path in input_paths for level in args.levels]
-    print(f"Output: {cells_dir}")
+    print(f"Output: {phase1_dir}")
     print(f"jobs={len(jobs)} workers={args.workers} levels={args.levels} taus={sorted(args.taus)} floor={floor} n={NGRAM_N}\n")
 
     summary: list[dict[str, Any]] = []
     with ProcessPoolExecutor(max_workers=args.workers) as pool:
-        futures = {pool.submit(_process_cell, path, level, sorted(args.taus), floor, cells_dir, args.record_limit): (path.stem, level) for path, level in jobs}
+        futures = {pool.submit(_process_cell, path, level, sorted(args.taus), floor, phase1_dir, args.record_limit): (path.stem, level) for path, level in jobs}
         for future in as_completed(futures):
             stem, level = futures[future]
             summary.extend(future.result())
