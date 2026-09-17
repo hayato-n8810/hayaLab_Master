@@ -2,7 +2,7 @@
 
 スコープ 3 種 × 抽象度 2 水準の 6 組を並列に処理し、各組で全閾値のクラスタを扱う。
 
-代表の作り方は 4 段からなる。
+代表の作り方は 5 段からなる。
 
 1. 骨格 — 各メンバーの切り出しを仮想ルート下の順序付き森とし、子列を LCS で対応付けながら
    メンバー ID 昇順に畳み込む。対応しない子は代表に含めない。骨格は全メンバーが共有する構造になる。
@@ -12,7 +12,11 @@
    プレースホルダ識別子であるものを、メンバーごとの生 ``value`` の並び（参照シグネチャ）で
    グループ化し、2 ノード以上のグループに ``bind`` を張る。1 ノードだけの ``bind`` は
    照合対象を持たず制約にならないため張らない。
-4. 出力 — ``slow_patterns.json`` と同じノード仕様（``name`` / ``value`` / ``bind`` / ``children``）に整形する。
+4. 階層 — 切り出しで祖先が欠落すると、骨格の辺が元 AST の親子関係と一致しなくなる。preorder では
+   祖先鎖に沿ってインデックスが単調増加するため、子の祖先列のうち骨格上の親より大きいものが
+   挟まった祖先にあたる。1 メンバーでも挟まっていれば ``match: "descendant"`` を付ける。
+   ``descendant`` は緩和であり挟まっていないメンバーにも当たるので、これで全メンバーを覆える。
+5. 出力 — ``slow_patterns.json`` と同じノード仕様（``name`` / ``value`` / ``bind`` / ``match`` / ``children``）に整形する。
 
 射影ラベルは phase1 と同一の規則を用いる。
 
@@ -31,13 +35,15 @@
 切り出しは森であり、仮想ルートの子が複数になりうる。パターン仕様は単一の根を取るため、
 成分ごとに 1 件の仕様を出力する。
 
-代表は過半数ルールで値を決めるため、全メンバーを覆うとは限らない。覆う割合を ``coverage``
-として記録する。``retention``（代表のノード数 / 最小メンバーのノード数）とあわせて、
-分散が大きく共通要素を見出せないクラスタを事後に選別できる。
+代表は過半数ルールで値を決めるため、全メンバーを覆うとは限らない。覆う割合 ``coverage`` と
+``retention``（代表のノード数 / 最小メンバーのノード数）はセル単位でサマリに集計する。
 
 出力:
     outputs/saner/approach/phase2/tau{NN}/{level}/{scope}_representatives.jsonl
     outputs/saner/approach/phase2/representative_summary.json
+
+出力 JSONL の 1 行は ``{"cluster_id", "size", "members", "patterns"}``。
+``patterns`` は成分ごとのノード仕様であり、パターン仕様の ``root`` に相当する。
 """
 
 from __future__ import annotations
@@ -227,27 +233,50 @@ def _walk(node: dict[str, Any]) -> list[dict[str, Any]]:
     return collected
 
 
+def _mark_descendant(node: dict[str, Any], parent: dict[str, Any] | None, lookup: list[dict[int, CutNode]]) -> None:
+    """骨格の辺が元 AST でも直接の親子かを判定し、``descendant`` を付ける。
+
+    切り出しで祖先が欠落すると :func:`_build_tree` が最近接の存在する祖先へ付け替えるため、
+    骨格の辺は元 AST の親子関係と一致しないことがある。preorder では祖先鎖に沿って
+    インデックスが単調増加するので、子の祖先列のうち親より大きいものが挟まった祖先になる。
+
+    1 メンバーでも祖先が挟まっていれば直接の子として照合できないため、``descendant`` を付ける。
+    ``descendant`` は緩和であり挟まっていないメンバーにも当たるので、これで全メンバーを覆える。
+
+    Args:
+        node: 骨格ノード。
+        parent: 骨格上の親ノード。根の場合は ``None``。
+        lookup: メンバーごとの ``origin_index`` からノードへの対応。
+    """
+    if parent is not None and parent["name"] != VIRTUAL_ROOT_NAME:
+        node["descendant"] = any(any(ancestor > parent["origins"][member] for ancestor in lookup[member][node["origins"][member]].parent) for member in node["origins"])
+    for child in node["children"]:
+        _mark_descendant(child, node, lookup)
+
+
 def _spec_of(node: dict[str, Any]) -> dict[str, Any]:
     """骨格ノードを ``slow_patterns.json`` 形式のノード仕様に整形する。
 
     Args:
-        node: 値と bind の決定済みの骨格ノード。
+        node: 値・bind・descendant の決定済みの骨格ノード。
 
     Returns:
-        ``name`` / ``value`` / ``bind`` / ``children`` を持つ仕様 dict。
+        ``name`` / ``value`` / ``bind`` / ``match`` / ``children`` を持つ仕様 dict。
     """
     spec: dict[str, Any] = {"name": node["name"]}
     if node.get("value") is not None:
         spec["value"] = node["value"]
     if node.get("bind") is not None:
         spec["bind"] = node["bind"]
+    if node.get("descendant"):
+        spec["match"] = "descendant"
     if node["children"]:
         spec["children"] = [_spec_of(child) for child in node["children"]]
     return spec
 
 
 def _representative(members: list[int], node_lists: list[list[CutNode]], level: str) -> dict[str, Any]:
-    """1 クラスタ分の代表パターンと指標を作る。
+    """1 クラスタ分の代表パターンと、サマリ用の指標を作る。
 
     Args:
         members: メンバーの mb_id（昇順）。
@@ -255,7 +284,7 @@ def _representative(members: list[int], node_lists: list[list[CutNode]], level: 
         level: 抽象度（``"alpha1"`` / ``"alpha2"``）。
 
     Returns:
-        代表パターンと指標を持つ dict。
+        成分ごとのノード仕様 ``patterns`` と、セル集計に用いる指標を持つ dict。
     """
     lookup = [{node.origin_index: node for node in nodes} for nodes in node_lists]
     regex_descendants = [_regex_descendant_indices(nodes) if level == "alpha2" else frozenset() for nodes in node_lists]
@@ -306,19 +335,18 @@ def _representative(members: list[int], node_lists: list[list[CutNode]], level: 
         if all(node["label"] is None or _label(lookup[member][node["origins"][member]], level, regex_descendants[member]) == node["label"] for node in body):
             covered += 1
 
+    # 階層: 元 AST で祖先が挟まる辺に descendant を付ける
+    _mark_descendant(skeleton, None, lookup)
+
     minimum = min(len(nodes) for nodes in node_lists)
     return {
-        "size": len(members),
-        "members": members,
-        "components": len(skeleton["children"]),
+        "patterns": [_spec_of(child) for child in skeleton["children"]],
         "node_count": len(body),
-        "min_member_nodes": minimum,
         "retention": len(body) / minimum if minimum else 0.0,
         "no_majority": no_majority,
-        "no_majority_ratio": no_majority / len(body) if body else 0.0,
         "bind_groups": bind_groups,
+        "descendant_edges": sum(1 for node in body if node.get("descendant")),
         "coverage": covered / total,
-        "patterns": [_spec_of(child) for child in skeleton["children"]],
     }
 
 
@@ -377,21 +405,24 @@ def _process_cell(scope: str, level: str, phase0_dir: Path, phase1_dir: Path, ph
 
         written = 0
         skipped = 0
+        empty = 0
         coverages: list[float] = []
         retentions: list[float] = []
+        descendant_edges = 0
         with open(cell_dir / f"{scope}_representatives.jsonl", "w", encoding="utf-8") as f:
             for cluster in clusters[tau]:
                 members = [mb_id for mb_id in cluster["members"] if mb_id in nodes_of]
                 if len(members) < 2:
                     skipped += 1
                     continue
-                payload = _representative(members, [nodes_of[mb_id] for mb_id in members], level)
-                payload["cluster_id"] = cluster["cluster_id"]
-                payload["origin"] = cluster["origin"]
+                result = _representative(members, [nodes_of[mb_id] for mb_id in members], level)
+                payload = {"cluster_id": cluster["cluster_id"], "size": len(members), "members": members, "patterns": result["patterns"]}
                 f.write(json.dumps(payload, ensure_ascii=False) + "\n")
                 written += 1
-                coverages.append(payload["coverage"])
-                retentions.append(payload["retention"])
+                empty += 1 if result["node_count"] == 0 else 0
+                coverages.append(result["coverage"])
+                retentions.append(result["retention"])
+                descendant_edges += result["descendant_edges"]
 
         summary.append(
             {
@@ -401,6 +432,8 @@ def _process_cell(scope: str, level: str, phase0_dir: Path, phase1_dir: Path, ph
                 "clusters": len(clusters[tau]),
                 "representatives": written,
                 "skipped": skipped,
+                "empty": empty,
+                "descendant_edges": descendant_edges,
                 "coverage_full": sum(1 for value in coverages if value == 1.0),
                 "coverage_mean": sum(coverages) / len(coverages) if coverages else 0.0,
                 "retention_mean": sum(retentions) / len(retentions) if retentions else 0.0,
