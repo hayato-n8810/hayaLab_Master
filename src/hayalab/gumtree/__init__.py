@@ -1,5 +1,12 @@
 """GumTree関連API。"""
 
+from .cut import (
+    cut_action_blocks,
+    cut_by_parent,
+    cut_by_range,
+    merge_action_nodes,
+    merge_nodes,
+)
 from .extract import (
     base_diff_blocks,
     base_scope_block_exclude_parent,
@@ -58,4 +65,10 @@ __all__ = [
     "load_tree_patterns",
     "build_tree_context",
     "find_tree_matches",
+    # action 起点の切り出し
+    "cut_by_range",
+    "cut_by_parent",
+    "merge_nodes",
+    "cut_action_blocks",
+    "merge_action_nodes",
 ]
