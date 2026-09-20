@@ -7,29 +7,25 @@
 
 - レコード内の全 action の diff / parent_diff / around_parent をそれぞれ統合した JSON
   （``sigma_1.json`` / ``sigma_2.json`` / ``sigma_3.json``）
-- 3 スコープを 1 本のノード列に畳み，各ノードに ``level`` を付与した JSONL
+- スコープごとの切り出し規模の要約（``scope_size.json``）
 
 統合時は base_ast.tree の index 昇順に並べ，重複ノードは 1 件に畳む。
 
-検証項目
-
-- level 注釈の整合: ``level <= n`` のノード集合が第 n 段スコープに一致する
-- 包含関係の保存: diff ⊆ parent_diff ⊆ around_parent
-- 森の不変条件: 欠落祖先の解決，children，subtree_end（先頭 FOREST_SAMPLE 件）
-- パス集合 / postorder の健全性（同上）
+``node_count`` は区切り記号を除いた切り出しノード数であり，``scope_size.json`` は
+その分布と，差分ノード（第 1 段スコープ）に由来しないノードの割合の分布をまとめる。
 """
 
 from __future__ import annotations
 
 import json
+import statistics
 
 from tqdm import tqdm
 
 import hayalab
-from hayalab.classes.gumtree import CutForest, GumDiff
+from hayalab.classes.gumtree import GumDiff
 from hayalab.config import PathConfig
-from hayalab.gumtree import build_cut_forest, cut_action_blocks, leveled_cut_nodes, merge_action_nodes, path_set, postorder_tree
-from hayalab.gumtree.extract import NodePayload
+from hayalab.gumtree import cut_action_blocks, merge_action_nodes
 
 # --- Constants (hyperparameters tunable at the top of the file) ----
 # 森構築まで精査するレコード数（level 整合と包含関係は全件で検査する）
@@ -41,56 +37,66 @@ SCOPE_KEYS: tuple[str, ...] = ("diff", "parent_diff", "around_parent")
 # スコープ段と出力ファイル名の対応（SCOPE_KEYS と同順）
 SIGMA_NAMES: tuple[str, ...] = ("sigma_1", "sigma_2", "sigma_3")
 
-
-# --- Helpers (only those called many times) ------------------------
-def _verification_label(node: NodePayload) -> str:
-    """検証用の比較ラベル（name と value を連結した具体ラベル）を返す。
-
-    Args:
-        node: ノード payload。
-
-    Returns:
-        ``name:value`` 形式のラベル。
-    """
-    return f"{node['name']}:{node['value']}"
+# 親ノードの型から一意に定まる区切り記号（node_count の対象外）。演算子は含めない
+DELIMITER_NAMES: frozenset[str] = frozenset({"(", ")", "[", "]", "{", "}", ",", ";", ".", '"', "'", "`", ":", "=>", "${"})
 
 
-def _check_forest(forest: CutForest, nodes: list[NodePayload]) -> list[str]:
-    """CutForest の不変条件を検査し，違反メッセージのリストを返す。
+# --- Helpers (only those called multiple times) --------------------
+def _counted_indices(nodes: list[dict]) -> set[int]:
+    """区切り記号を除いた切り出しノードの ``origin_index`` 集合を返す。
 
     Args:
-        forest: 検査対象の森。
-        nodes: 構築元のノード payload 列（origin_index 昇順）。
+        nodes: 統合済みのノード payload 列。
 
     Returns:
-        違反内容の説明文字列。違反がなければ空リスト。
+        ``origin_index`` の集合。区切り記号のみの場合は空集合。
     """
-    errors: list[str] = []
-    total = len(forest.labels)
+    return {node["origin_index"] for node in nodes if node["name"] not in DELIMITER_NAMES}
 
-    if total != len(nodes) + 1:
-        errors.append(f"ノード数不一致: forest={total} nodes+1={len(nodes) + 1}")
-    if forest.parent[0] != -1 or forest.origin_indices[0] != -1:
-        errors.append("仮想ルートの parent / origin_index が -1 でない")
-    if forest.subtree_end[0] != total - 1:
-        errors.append("仮想ルートの subtree_end が末尾でない")
 
-    present = {node["origin_index"] for node in nodes}
-    for index in range(1, total):
-        upper = forest.parent[index]
-        if upper >= index:
-            errors.append(f"親が自身より後ろ: index={index} parent={upper}")
-        if forest.subtree_end[index] < index:
-            errors.append(f"subtree_end が自身より小さい: index={index}")
-        if index not in forest.children[upper]:
-            errors.append(f"children に自身が含まれない: index={index}")
-        # 解決された親は「元 parent 列のうち存在する最近接の祖先」であること
-        ancestors = [a for a in nodes[index - 1]["parent"] if a in present]
-        expected = forest.origin_indices.index(ancestors[-1]) if ancestors else 0
-        if upper != expected:
-            errors.append(f"親の解決が不正: index={index} got={upper} want={expected}")
+def _quantile(sorted_values: list[float], q: float) -> float:
+    """昇順に並んだ値列の分位点を線形補間で返す。
 
-    return errors
+    Args:
+        sorted_values: 昇順に並んだ値の列。空であってはならない。
+        q: 0.0 以上 1.0 以下の分位。
+
+    Returns:
+        分位点の値。
+    """
+    if len(sorted_values) == 1:
+        return float(sorted_values[0])
+    position = q * (len(sorted_values) - 1)
+    low = int(position)
+    high = min(low + 1, len(sorted_values) - 1)
+    weight = position - low
+    return float(sorted_values[low] * (1.0 - weight) + sorted_values[high] * weight)
+
+
+def _summary(values: list[float]) -> dict[str, float]:
+    """値列の平均・中央値・四分位・分散をまとめる。
+
+    Args:
+        values: 集計対象の値列。空であってはならない。
+
+    Returns:
+        ``mean`` / ``median`` / ``q1`` / ``q3`` / ``variance`` / ``min`` / ``max`` を持つ辞書。
+
+    Raises:
+        ValueError: ``values`` が空の場合。
+    """
+    if not values:
+        raise ValueError("集計対象の値がありません")
+    ordered = sorted(float(value) for value in values)
+    return {
+        "mean": statistics.mean(ordered),
+        "median": statistics.median(ordered),
+        "q1": _quantile(ordered, 0.25),
+        "q3": _quantile(ordered, 0.75),
+        "variance": statistics.pvariance(ordered),
+        "min": ordered[0],
+        "max": ordered[-1],
+    }
 
 
 # --- Main flow -----------------------------------------------------
@@ -100,7 +106,6 @@ if __name__ == "__main__":
     input_path = config.processed / "MBDiff.json"
     sigma_dir = config.outputs / "saner" / "approach" / "phase0"
     scope_paths = {key: sigma_dir / f"{name}.json" for key, name in zip(SCOPE_KEYS, SIGMA_NAMES, strict=True)}
-    leveled_path = sigma_dir / "cut_leveled.jsonl"
 
     if not input_path.exists():
         raise FileNotFoundError(f"入力ファイルが見つかりません: {input_path}")
@@ -109,8 +114,6 @@ if __name__ == "__main__":
     # --- Section 2: 入力読み込み ---
     records = hayalab.read_json(str(input_path))
     print(f"Input:  {input_path} ({len(records)} records)")
-    for path in (*scope_paths.values(), leveled_path):
-        print(f"Output: {path}")
 
     # --- Section 3: 切り出し・書き出し・検証（1 パス） ---
     # 統合結果は JSON 配列を 1 レコードずつ書き足す（全件をメモリに保持しない）
@@ -121,11 +124,16 @@ if __name__ == "__main__":
     postorder_errors: list[int] = []
     checked_forests = 0
 
+    # scope_size.json の集計用（レコード単位のノード数と非差分ノード比）
+    node_counts: dict[str, list[int]] = {key: [] for key in SCOPE_KEYS}
+    non_diff_ratios: dict[str, list[float]] = {key: [] for key in SCOPE_KEYS}
+    pooled_nodes: dict[str, int] = {key: 0 for key in SCOPE_KEYS}
+    pooled_non_diff: dict[str, int] = {key: 0 for key in SCOPE_KEYS}
+
     with (
         open(scope_paths["diff"], "w", encoding="utf-8") as f_diff,
         open(scope_paths["parent_diff"], "w", encoding="utf-8") as f_parent_diff,
         open(scope_paths["around_parent"], "w", encoding="utf-8") as f_around_parent,
-        open(leveled_path, "w", encoding="utf-8") as f_leveled,
     ):
         scope_handles = {"diff": f_diff, "parent_diff": f_parent_diff, "around_parent": f_around_parent}
         for handle in scope_handles.values():
@@ -138,45 +146,60 @@ if __name__ == "__main__":
 
             separator = "" if order == 0 else ",\n"
             scope_sets: list[set[int]] = []
+            diff_indices: set[int] = set()
             for key in SCOPE_KEYS:
                 scope_nodes = merge_action_nodes(blocks, key)
                 scope_sets.append({node["origin_index"] for node in scope_nodes})
-                scope_handles[key].write(separator + json.dumps({"id": record_id, "nodes": scope_nodes}, ensure_ascii=False))
 
-            leveled_nodes = leveled_cut_nodes(blocks)
-            f_leveled.write(json.dumps({"id": record_id, "nodes": leveled_nodes}, ensure_ascii=False) + "\n")
+                counted = _counted_indices(scope_nodes)
+                if key == SCOPE_KEYS[0]:
+                    diff_indices = counted
+                if counted:
+                    non_diff = len(counted - diff_indices)
+                    node_counts[key].append(len(counted))
+                    non_diff_ratios[key].append(non_diff / len(counted))
+                    pooled_nodes[key] += len(counted)
+                    pooled_non_diff[key] += non_diff
 
-            # 検証: level <= n の集合が第 n 段スコープに一致し，包含関係が保たれること
-            leveled_sets = [{node["origin_index"] for node in leveled_nodes if node["level"] <= level} for level in (1, 2, 3)]
-            if leveled_sets != scope_sets:
-                level_mismatch.append(record_id)
-            if not (leveled_sets[0] <= leveled_sets[1] <= leveled_sets[2]):
-                nesting_violation.append(record_id)
-
-            # 検証: 森の構築とパス集合 / postorder の健全性
-            if checked_forests < FOREST_SAMPLE and leveled_nodes:
-                checked_forests += 1
-                forest = build_cut_forest(leveled_nodes, _verification_label)
-                forest_errors.extend(f"id={record_id}: {message}" for message in _check_forest(forest, leveled_nodes))
-                if len(path_set(forest)) > len(leveled_nodes):
-                    path_errors.append(record_id)
-                post = postorder_tree(forest)
-                if sorted(post.labels) != sorted(forest.labels):
-                    postorder_errors.append(record_id)
-                elif any(post.leftmost[position] > position for position in range(len(post.labels))):
-                    postorder_errors.append(record_id)
+                record = {"id": record_id, "node_count": len(counted), "nodes": scope_nodes}
+                scope_handles[key].write(separator + json.dumps(record, ensure_ascii=False))
 
         for handle in scope_handles.values():
             handle.write("\n]\n")
 
-    # --- Section 4: 検証結果の報告 ---
-    for path in (*scope_paths.values(), leveled_path):
-        print(f"Done: {path}")
+    # --- Section 4: 切り出し規模の集計 ---
+    scope_rows: list[dict] = []
+    for key, name in zip(SCOPE_KEYS, SIGMA_NAMES, strict=True):
+        if not node_counts[key]:
+            raise ValueError(f"集計対象のレコードがありません: {name}")
+        scope_rows.append(
+            {
+                "scope": name,
+                "records": len(node_counts[key]),
+                "nodes_total": pooled_nodes[key],
+                "nodes": _summary(node_counts[key]),
+                "non_diff_ratio": _summary(non_diff_ratios[key]),
+            }
+        )
+        print(
+            f"{name}: {len(node_counts[key])} records  "
+            f"nodes mean {scope_rows[-1]['nodes']['mean']:.1f} / median {scope_rows[-1]['nodes']['median']:.0f}  "
+            f"non_diff mean {scope_rows[-1]['non_diff_ratio']['mean']:.3f} / median {scope_rows[-1]['non_diff_ratio']['median']:.3f}"
+        )
 
-    print(f"\n[検証] level 注釈の整合   : 不一致 {len(level_mismatch)} 件 {level_mismatch[:5]}")
-    print(f"[検証] 包含関係の保存     : 違反 {len(nesting_violation)} 件 {nesting_violation[:5]}")
-    print(f"[検証] 森の不変条件       : 違反 {len(forest_errors)} 件（検査 {checked_forests} 件）")
-    for message in forest_errors[:5]:
-        print(f"          {message}")
-    print(f"[検証] パス集合           : 異常 {len(path_errors)} 件 {path_errors[:5]}")
-    print(f"[検証] postorder          : 異常 {len(postorder_errors)} 件 {postorder_errors[:5]}")
+    scope_size_path = sigma_dir / "scope_size.json"
+    with open(scope_size_path, "w", encoding="utf-8") as f:
+        json.dump(
+            {
+                "diff_base_scope": SIGMA_NAMES[0],
+                "delimiter_names": sorted(DELIMITER_NAMES),
+                "scopes": scope_rows,
+            },
+            f,
+            ensure_ascii=False,
+            indent=2,
+        )
+
+    print(f"Done: {len(records)} records")
+    for path in (*scope_paths.values(), scope_size_path):
+        print(f"Output: {path}")
