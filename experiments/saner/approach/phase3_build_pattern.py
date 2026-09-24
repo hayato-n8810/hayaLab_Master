@@ -36,7 +36,7 @@ SCOPES: tuple[str, ...] = ("sigma_1", "sigma_2", "sigma_3")
 ABSTRACTION_LEVELS: tuple[str, ...] = ("alpha1", "alpha2")
 
 # 一致度閾値の水準
-THRESHOLDS: tuple[float, ...] = (0.6, 0.7, 0.8, 0.9)
+THRESHOLDS: tuple[float, ...] = (0.7, 0.9)
 
 # パターン仕様のスキーマ版（slow_patterns.json と揃える）
 SPEC_VERSION: int = 1

@@ -233,9 +233,11 @@ if __name__ == "__main__":
                         if cluster_id not in targets_of_cluster:
                             continue
                         predicted = {int(hit_id) for hit_id in cluster["base_hit_ids"]}
+                        members = set(members_of[cluster_id])
                         for target in targets_of_cluster[cluster_id]:
                             truth = truth_ids[target]
                             true_positive = len(predicted & truth)
+                            false_positive_in_cluster = len((predicted - truth) & members)
                             false_positive = len(predicted) - true_positive
                             false_negative = len(truth) - true_positive
                             precision = _ratio(true_positive, len(predicted))
@@ -249,14 +251,17 @@ if __name__ == "__main__":
                                     "cluster_id": cluster_id,
                                     "cluster_size": len(members_of[cluster_id]),
                                     "cluster_truth_size": len(hit_clusters[target][cluster_id]),
-                                    "base_hits": len(predicted),
+                                    "detection": {
+                                        "total": len(predicted),
+                                        "truth": true_positive,
+                                        "include_member": false_positive_in_cluster,
+                                        "not_member": false_positive - false_positive_in_cluster,
+                                    },
                                     "truth_size": len(truth),
                                     "precision": precision,
                                     "recall": recall,
                                     "f1": _f1(precision, recall),
-                                    "true_positive": true_positive,
                                     "false_negative": false_negative,
-                                    "false_positive": false_positive,
                                     "pattern": root_of.get(cluster_id),
                                 }
                             )

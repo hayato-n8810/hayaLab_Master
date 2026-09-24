@@ -65,7 +65,7 @@ from hayalab.config import PathConfig
 SCOPES: tuple[str, ...] = ("sigma_1", "sigma_2", "sigma_3")
 
 # 一致度閾値の水準（phase1 の出力ディレクトリ名と対応する）
-THRESHOLDS: tuple[float, ...] = (0.6, 0.7, 0.8, 0.9)
+THRESHOLDS: tuple[float, ...] = (0.7, 0.9)
 
 # 抽象度の水準
 ABSTRACTION_LEVELS: tuple[str, ...] = ("alpha1", "alpha2")

@@ -65,7 +65,7 @@ from hayalab.config import PathConfig
 INPUT_NAMES: tuple[str, ...] = ("sigma_1.json", "sigma_2.json", "sigma_3.json")
 
 # 一致度閾値の水準
-THRESHOLDS: tuple[float, ...] = (0.6, 0.7, 0.8, 0.9)
+THRESHOLDS: tuple[float, ...] = (0.7, 0.9)
 
 # 抽象度の水準
 ABSTRACTION_LEVELS: tuple[str, ...] = ("alpha1", "alpha2")
