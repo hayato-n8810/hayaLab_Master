@@ -16,7 +16,7 @@ def read_file(file_path: str) -> str:
         return f.read()
 
 
-def write_file(file_path: str, data: str, sort_flg: bool = True) -> None:
+def write_file(file_path: str, data: str, sort_flg: bool = False) -> None:
     """文字列をファイルとして書き込む。
 
     Args:
