@@ -14,22 +14,13 @@ from pathlib import Path
 
 import hayalab
 from hayalab.config import PathConfig
+from hayalab.config.jsperf_config import NODE_BIN, NODE_ERROR_TYPE_KEYS, NODE_PROGRAM_TIMEOUT_SEC
 from hayalab.utils.file.exec import classify_node_error, run_node
 
 # --- Constants ------------------------------------------------------
 MAX_WORKERS: int = 20
-NODE_BIN: str = "node"
-TIMEOUT: float = 180.0  # seconds
-ERROR_TYPE_KEYS: tuple[str, ...] = (
-    "ReferenceError",
-    "TypeError",
-    "SyntaxError",
-    "RangeError",
-    "ModuleNotFound",
-    "OutOfMemory",
-    "Timeout",
-    "OtherError",
-)
+TIMEOUT: float = NODE_PROGRAM_TIMEOUT_SEC  # プログラム 1 回の実行 (seconds)
+ERROR_TYPE_KEYS: tuple[str, ...] = NODE_ERROR_TYPE_KEYS
 
 
 def _run_program_with_retry(job: tuple[str, str, int, Path]) -> dict:

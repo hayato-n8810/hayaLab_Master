@@ -19,10 +19,8 @@ from pathlib import Path
 
 import hayalab
 from hayalab.config import PathConfig
+from hayalab.config.jsperf_config import CONFIDENCE
 from hayalab.jsperf.interval import disjoint_interval_pairs, mean_confidence_interval
-
-# --- 定数 (ファイル先頭で調整するハイパーパラメータ) ----------------
-CONFIDENCE: float = 0.95
 
 # --- Main flow -----------------------------------------------------
 if __name__ == "__main__":

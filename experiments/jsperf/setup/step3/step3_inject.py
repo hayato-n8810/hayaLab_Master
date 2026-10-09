@@ -33,21 +33,13 @@ from pathlib import Path
 
 import hayalab
 from hayalab.config import PathConfig
+from hayalab.config.jsperf_config import NODE_BIN, NODE_ERROR_TYPE_KEYS, NODE_PROGRAM_TIMEOUT_SEC
 from hayalab.utils.file.exec import classify_node_error, run_node
 
 # --- Constants ------------------------------------------------------
 DEFAULT_MAX_WORKERS: int = 20
-NODE_BIN: str = "node"
-NODE_TIMEOUT: float = 180.0
-ERROR_TYPE_KEYS: tuple[str, ...] = (
-    "ReferenceError",
-    "TypeError",
-    "SyntaxError",
-    "RangeError",
-    "ModuleNotFound",
-    "OutOfMemory",
-    "OtherError",
-)
+NODE_TIMEOUT: float = NODE_PROGRAM_TIMEOUT_SEC  # プログラム 1 回の実行
+ERROR_TYPE_KEYS: tuple[str, ...] = NODE_ERROR_TYPE_KEYS
 
 
 # --- Helpers (per-record 処理) -----------------

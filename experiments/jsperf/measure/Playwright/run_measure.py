@@ -59,12 +59,13 @@ from playwright.async_api import async_playwright
 
 import hayalab
 from hayalab.config import PathConfig
+from hayalab.config.jsperf_config import PLAYWRIGHT_PROGRAM_TIMEOUT_SEC
 from hayalab.jsperf import measure as jsperf_measure
 
 # --- Constants ------------------------------------------------------
 PORT: int = 8500
 COEP_MODE: str = "credentialless"
-PAGE_TIMEOUT_MS: int = 180_000_000  # per-test タイムアウト (重いユニットは打ち切って timeout 記録)
+PAGE_TIMEOUT_MS: int = int(PLAYWRIGHT_PROGRAM_TIMEOUT_SEC * 1000) * 1000  # per-test タイムアウト (重いユニットは打ち切って timeout 記録)
 PROGRESS_EVERY: int = 100
 
 

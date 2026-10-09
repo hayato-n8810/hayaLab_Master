@@ -53,11 +53,11 @@ from pathlib import Path
 
 import hayalab
 from hayalab.config import PathConfig
+from hayalab.config.jsperf_config import NODE_BIN, NODE_PROGRAM_TIMEOUT_SEC
 from hayalab.jsperf import measure as jsperf_measure
 
 # --- Constants ------------------------------------------------------
-NODE_BIN: str = "node"
-TIMEOUT_SEC: float = 180000.0  # per-test タイムアウト (重いユニットは打ち切って timeout 記録)
+TIMEOUT_SEC: float = NODE_PROGRAM_TIMEOUT_SEC * 1000  # per-test タイムアウト (重いユニットは打ち切って timeout 記録)
 PROGRESS_EVERY: int = 100
 STDERR_HEAD_BYTES: int = 8192  # stderr の一時ファイルから読み出す先頭バイト数
 ERROR_HEAD_CHARS: int = 300  # results.jsonl の error_head に残す文字数

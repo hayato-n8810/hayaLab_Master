@@ -71,20 +71,14 @@ from playwright.async_api import async_playwright
 
 import hayalab
 from hayalab.config import PathConfig
+from hayalab.config.jsperf_config import PLAYWRIGHT_ERROR_TYPE_KEYS
 
 # --- Constants ------------------------------------------------------
 DEFAULT_MAX_WORKERS: int = 15
 DEFAULT_PAGE_TIMEOUT_MS: int = 30_000
 DEFAULT_SETTLE_MS: int = 500
 DEFAULT_PORT: int = 8437
-ERROR_TYPE_KEYS: tuple[str, ...] = (
-    "LoadFailed",
-    "Timeout",
-    "ScriptLoadFailed",
-    "PageError",
-    "ConsoleError",
-    "DriverCrashed",
-)
+ERROR_TYPE_KEYS: tuple[str, ...] = PLAYWRIGHT_ERROR_TYPE_KEYS
 
 
 # --- Helpers (複数回呼び出し / per-record worker) --------------------
