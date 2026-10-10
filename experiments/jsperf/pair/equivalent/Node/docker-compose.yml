@@ -1,0 +1,31 @@
+# Node 等価性検証コンテナ (最小マウント)
+# 検証に必要なパスのみを /workspace 配下へ同一相対構造でバインドし、
+# 無関係なツリー (.git / 他の data・outputs / 他 experiments) からの干渉を避ける。
+# 実行時間は測らないためコア pin は行わず、並列化は run.py のペア単位ワーカーが担う。
+#
+# EQUIV_ARGS で run.py への追加引数を渡す (例: EQUIV_ARGS="--limit 100")。
+services:
+  equiv-node:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: jsperf-equivalent-node
+    container_name: jsperf-equivalent-node
+    working_dir: /workspace
+    environment:
+      PYTHONUNBUFFERED: "1"
+      UV_LINK_MODE: copy
+    # NODE_PATH はイメージ側 /opt/npm/node_modules を指す (Dockerfile)
+    volumes:
+      # uv run が hayalab を解決するためのルート要素 (README.md は pyproject の readme 参照先)
+      - ../../../../../src:/workspace/src:ro
+      - ../../../../../pyproject.toml:/workspace/pyproject.toml:ro
+      - ../../../../../uv.lock:/workspace/uv.lock:ro
+      - ../../../../../README.md:/workspace/README.md:ro
+      # 実行スクリプト (node_modules はイメージ側 /opt/npm にあるためここには不要)
+      - ../../../../../experiments/jsperf/pair/equivalent/Node:/workspace/experiments/jsperf/pair/equivalent/Node:ro
+      # 入力 (ペアと元プログラム)
+      - ../../../../../outputs/jsperf/pair/time/Node:/workspace/outputs/jsperf/pair/time/Node:ro
+      # 判定結果の出力
+      - ../../../../../outputs/jsperf/pair/equivalent/Node:/workspace/outputs/jsperf/pair/equivalent/Node:rw
+    command: uv run python experiments/jsperf/pair/equivalent/Node/run.py --workers 6
