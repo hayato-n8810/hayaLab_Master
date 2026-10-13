@@ -46,7 +46,7 @@ def gum_parse(code: str) -> AST:
 
     # 一時ファイルを作成
     code = code_clean(code)
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".js", delete=False, encoding="utf-8") as temp_file:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".js", delete=True, encoding="utf-8") as temp_file:
         temp_file.write(code)
         temp_file.flush()
 
