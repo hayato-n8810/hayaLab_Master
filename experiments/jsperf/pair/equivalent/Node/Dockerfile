@@ -9,10 +9,10 @@ FROM python:3.14-slim
 WORKDIR /opt
 
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends curl gnupg ca-certificates unzip && \
+    apt-get install -y --no-install-recommends curl gnupg ca-certificates unzip wget && \
     curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && \
     apt-get install -y --no-install-recommends nodejs && \
-    apt-get install -y --no-install-recommends openjdk-21-jr-headless \
+    apt-get install -y --no-install-recommends openjdk-21-jre-headless \
     && wget "https://github.com/GumTreeDiff/gumtree/releases/download/v4.0.0-beta2/gumtree-4.0.0-beta2.zip" \
     && unzip "gumtree-4.0.0-beta2.zip" \
     && mv "gumtree-4.0.0-beta2" "gumtree" \
