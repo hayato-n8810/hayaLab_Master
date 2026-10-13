@@ -94,3 +94,17 @@ def find_sibling_root_indices(
     if not (0 <= parent_idx < len(tree)):
         return []
     return sorted(idx for idx, node in enumerate(tree) if node.parent and node.parent[-1] == parent_idx and scope_idx in node.parent)
+
+
+def collect_node(ast: AST, target_node: list[str]) -> list[tuple[str, str, str]]:
+    """AST中の指定ノード名を持つノードを出現順に収集する。
+
+    Args:
+        ast (AST): 対象AST。
+        target_node (list[str]): 収集対象のノード名。
+
+    Returns:
+        list[tuple[str, str, str]]: 収集したノードの `(label, name, value)`。
+    """
+    targets = set(target_node)
+    return [(node.label, node.name, node.value) for node in ast.tree if node.name in targets]
