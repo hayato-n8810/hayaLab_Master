@@ -6,14 +6,22 @@
 # Python v3.14（LTS）
 
 FROM python:3.14-slim
+WORKDIR /opt
 
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends curl gnupg ca-certificates && \
+    apt-get install -y --no-install-recommends curl gnupg ca-certificates unzip && \
     curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && \
     apt-get install -y --no-install-recommends nodejs && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
+    apt-get install -y --no-install-recommends openjdk-21-jr-headless \
+    && wget "https://github.com/GumTreeDiff/gumtree/releases/download/v4.0.0-beta2/gumtree-4.0.0-beta2.zip" \
+    && unzip "gumtree-4.0.0-beta2.zip" \
+    && mv "gumtree-4.0.0-beta2" "gumtree" \
+    && rm gumtree-4.0.0-beta2.zip \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
+
+ENV PATH=$PATH:/opt/gumtree/bin
 
 WORKDIR /workspace
 ENV PYTHONUNBUFFERED=1
