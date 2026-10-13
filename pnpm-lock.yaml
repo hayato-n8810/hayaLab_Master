@@ -17,6 +17,9 @@ importers:
       babel:
         specifier: ^6.23.0
         version: 6.23.0
+      prettier:
+        specifier: ^3.9.10
+        version: 3.9.10
 
 packages:
 
@@ -64,6 +67,11 @@ packages:
     engines: {node: '>=6'}
     hasBin: true
 
+  prettier@3.9.10:
+    resolution: {integrity: sha512-skGHTH1Yb9QvaTC4hWnRTzEYtCpApF0UMBPz+t/0ZPzP8ihefo/btKd+QA7pUE0fEwA1SbS/NmhyEcstdXOIdA==}
+    engines: {node: '>=14'}
+    hasBin: true
+
 snapshots:
 
   '@babel/generator@7.28.5':
@@ -104,3 +112,5 @@ snapshots:
   babel@6.23.0: {}
 
   jsesc@3.1.0: {}
+
+  prettier@3.9.10: {}
