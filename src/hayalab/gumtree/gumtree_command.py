@@ -23,7 +23,7 @@ def exec(*command: str) -> list[str] | None:
     return result.stdout
 
 
-def gum_parse(code: str) -> AST:
+def gum_parse(code: str, code_clean: bool = True) -> AST:
     """gumtreeによるASTの生成と解析
 
     Args:
@@ -43,8 +43,10 @@ def gum_parse(code: str) -> AST:
     """
     ast: list[ASTNode] = []
 
+    if code_clean:
+        code = code_clean(code)
+
     # 一時ファイルを作成
-    code = code_clean(code)
     with tempfile.NamedTemporaryFile(mode="w", suffix=".js", delete=True, encoding="utf-8") as temp_file:
         temp_file.write(code)
         temp_file.flush()
