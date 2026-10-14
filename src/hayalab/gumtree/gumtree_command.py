@@ -1,5 +1,4 @@
 import json
-import re
 import tempfile
 from subprocess import run
 
@@ -31,7 +30,8 @@ def gum_parse(code: str) -> AST:
         code (Code): JavaScriptコード
 
     Returns:
-        AST: 生成された独自形式のAST（各行はgumtreeの出力行に対応）
+        AST: 生成されたgumtree(tree-sitter)AST
+        gumtreeの実行またはJSONの読み込みに失敗した場合は None。
 
         AST(
             code = "",
@@ -42,36 +42,43 @@ def gum_parse(code: str) -> AST:
         )
     """
     ast: list[ASTNode] = []
-    before_parent = []
 
     # 一時ファイルを作成
     code = code_clean(code)
     with tempfile.NamedTemporaryFile(mode="w", suffix=".js", delete=True, encoding="utf-8") as temp_file:
         temp_file.write(code)
         temp_file.flush()
+        # fオプションがないと文字列リテラル中の "\\n"（escape sequence）で出力が改行されるため正しく捕捉できない
+        output = exec("gumtree", "parse", "-g", "js-treesitter-ng", "-f", "JSON", temp_file.name)
 
-        # gumtreeによるASTの階層構造を整理
-        for i, line in enumerate(exec("gumtree", "parse", "-g", "js-treesitter-ng", temp_file.name).split("\n")):
-            matched = re.match(r"( *)((.+) \[(\d+),(\d+)\])", line)
+    if output is None:
+        return None
+    try:
+        root = json.loads(output)["root"]
+    except (json.JSONDecodeError, KeyError):
+        return None
 
-            if not matched:
-                return None
+    # textdiffコマンドの出力がfオプションなしの形式のため
+    # gumtree parseのfオプションの出力をfオプションがない場合の出力に変換
+    stack: list[tuple[dict, list[int]]] = [(root, [])]
+    while stack:
+        # 各ノードの祖先インデックス列を parent とする
+        node, parent = stack.pop()
+        begin = int(node["pos"])
+        end = begin + int(node["length"])
+        name = node["type"]
+        if "label" in node:
+            value = node["label"]
+            label = f"{name}: {value} [{begin},{end}]"
+        else:
+            value = name
+            label = f"{name} [{begin},{end}]"
+        ast.append(ASTNode(begin=begin, end=end, label=label, name=name, value=value, parent=parent))
 
-            indent, label, name, begin, end = matched.groups()
-
-            if len(indent) // 4 == len(before_parent):
-                parent = before_parent
-            elif len(indent) // 4 > len(before_parent):
-                parent = before_parent + [i - 1]
-            elif len(indent) // 4 < len(before_parent):
-                parent = before_parent[: len(indent) // 4]
-
-            if names := re.match(r"([^ ]+): (.+)", name):
-                ast.append(ASTNode(begin=int(begin), end=int(end), label=label, name=names.group(1), value=names.group(2), parent=parent))
-            else:
-                ast.append(ASTNode(begin=int(begin), end=int(end), label=label, name=name, value=name, parent=parent))
-
-            before_parent = ast[-1].parent
+        # 子を逆順に積み、元の順序で取り出す
+        child_parent = parent + [len(ast) - 1]
+        for child in reversed(node["children"]):
+            stack.append((child, child_parent))
 
     return AST(code=code, tree=ast)
 
