@@ -27,7 +27,7 @@ from .extract import (
     node_to_payload,
 )
 from .gumtree_command import gum_diff, gum_parse
-from .scan import collect_method_name, count_label, find_scope_boundary_index, find_sibling_root_indices
+from .scan import collect_method_name, collect_node, count_label, find_scope_boundary_index, find_sibling_root_indices
 from .tree_pattern import build_tree_context, find_tree_matches, load_tree_patterns
 
 __all__ = [
@@ -37,6 +37,7 @@ __all__ = [
     # AST走査
     "count_label",
     "collect_method_name",
+    "collect_node",
     "find_scope_boundary_index",
     "find_sibling_root_indices",
     # ASTの編集，抽出

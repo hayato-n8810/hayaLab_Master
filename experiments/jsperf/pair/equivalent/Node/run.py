@@ -1,8 +1,11 @@
-"""Step 1: 標準出力の比較による不等価ペアの除外.
+"""Step 1 / Step 2: 標準出力と変数の最終格納値の比較による不等価ペアの除外.
 
 `outputs/jsperf/pair/time/Node/pair_programs.json` の各ペアについて、fast / slow を
-決定化して関数ラップし、同一プロセスの同一パスで 1 回ずつ実行する。 stdout / stderr の
-ハッシュが一致しないペアを除外する。
+決定化して関数ラップし、同一プロセスの同一パスで 1 回ずつ実行する。
+
+- Step 1: stdout / stderr のハッシュが一致しないペアを除外する
+- Step 2: Step 1 を通過したペアについて、プログラム終了時の変数格納値を比較し、
+  両方で取得できた同名変数が 1 つでも一致しないペアを除外する
 
 ペアを単位として並列化するため、1 ペアの fast / slow は必ず同一ワーカープロセスで
 連続実行され、スタックトレースに現れる絶対パスが両者で一致する。
@@ -11,9 +14,9 @@
 - `outputs/jsperf/pair/time/Node/pair_programs.json`
 
 出力: `outputs/jsperf/pair/equivalent/Node/`
-- `equivalent_pair.json`: Step1 通過ペア (入力と同じ形式)
-- `not_equivalent_pair.json`: Step1 非通過ペアと理由 (決定化失敗を含む)
-- `summary.json`: 通過 / 非通過の件数と理由内訳
+- `equivalent_pair.json`: 全ステップ通過ペア (入力と同じ形式)
+- `not_equivalent_pair.json`: 非通過ペアと除外したステップ・理由 (決定化失敗を含む)
+- `summary.json`: 通過 / 非通過の件数、理由内訳、比較した変数が 0 件の Step 2 通過ペア数
 """
 
 from __future__ import annotations
@@ -22,11 +25,9 @@ import argparse
 from collections import Counter
 from concurrent.futures import ProcessPoolExecutor
 
-from tqdm import tqdm
-
 import hayalab
 from hayalab.config import PathConfig
-from hayalab.jsperf.equivalent import equivalent_output, replace_non_deterministic
+from hayalab.jsperf.equivalent import equivalent_output, equivalent_value, replace_non_deterministic
 
 # --- Constants (ファイル先頭で調整するハイパーパラメータ) ----------
 CHUNK_SIZE: int = 4
@@ -41,7 +42,7 @@ def _judge_pair(pair: dict) -> dict:
 
     Returns:
         dict: `{"pair": pair, "equivalent": bool, "step": int | None, "reason": dict | None}`
-            - `step`: None=等価, 0=決定化失敗, 1=標準出力不一致, # 2=変数格納値不一致, 3=式の値不一致
+            - `step`: None=等価, 0=決定化失敗, 1=標準出力不一致, 2=変数格納値不一致, # 3=式の値不一致
             - `reason`: `step` に応じた詳細情報。`step` が None の場合は None
     """
     # 非決定的な処理を置換
@@ -66,15 +67,17 @@ def _judge_pair(pair: dict) -> dict:
     if not is_equivalent:
         return {"pair": pair, "equivalent": is_equivalent, "step": 1, "reason": step1}
 
-    # # TODO: 変数の最終格納値を比較
-    # is_equivalent, reason, obs_fast, obs_slow = equivalent_value(fast_code, slow_code)
-    # step2 = {
-    #     "detail": reason,
-    #     "fast": {"program": pair["fast"]["code"], "determinize_status": fast_status},
-    #     "slow": {"program": pair["slow"]["code"], "determinize_status": slow_status},
-    # }
-    # if not is_equivalent:
-    #     return {"pair": pair, "equivalent": is_equivalent, "step": 2, "reason": step2}
+    # 変数の最終格納値を比較
+    is_equivalent, reason, obs_fast, obs_slow = equivalent_value(fast_code, slow_code)
+    step2 = {
+        "detail": reason,
+        "compared_count": obs_fast["compared_count"],
+        "mismatched_names": obs_fast["mismatched_names"],
+        "fast": {"program": pair["fast"]["code"], "determinize_status": fast_status, "names_status": obs_fast["names_status"], "instrument_status": obs_fast["instrument_status"]},
+        "slow": {"program": pair["slow"]["code"], "determinize_status": slow_status, "names_status": obs_slow["names_status"], "instrument_status": obs_slow["instrument_status"]},
+    }
+    if not is_equivalent:
+        return {"pair": pair, "equivalent": is_equivalent, "step": 2, "reason": step2}
 
     # # TODO: 式の値を比較
     # is_equivalent, reason, obs_fast, obs_slow = equivalent_formula(fast_code, slow_code)
@@ -92,7 +95,7 @@ def _judge_pair(pair: dict) -> dict:
 # --- Main flow -----------------------------------------------------
 if __name__ == "__main__":
     # --- 引数・パス解決 ---
-    parser = argparse.ArgumentParser(description="標準出力の比較により不等価ペアを除外する.")
+    parser = argparse.ArgumentParser(description="標準出力と変数の最終格納値の比較により不等価ペアを除外する.")
     parser.add_argument("--limit", type=int, default=0, help="先頭 N ペアだけ処理する (0 なら全件)")
     parser.add_argument("--workers", type=int, default=4, help="ペア単位の並列ワーカー数")
     args = parser.parse_args()
@@ -114,7 +117,7 @@ if __name__ == "__main__":
     # --- ペア単位の並列処理 (決定化 → 検証) ---
     results: list[dict] = []
     with ProcessPoolExecutor(max_workers=args.workers) as executor:
-        for result in tqdm(executor.map(_judge_pair, pairs, chunksize=CHUNK_SIZE), total=len(pairs)):
+        for result in executor.map(_judge_pair, pairs, chunksize=CHUNK_SIZE):
             results.append(result)
 
     # --- 結果の書き出し ---

@@ -1,8 +1,8 @@
 """不等価プログラム除外モジュール.
 
 プログラムの決定化 (Babel)、1 回実行による stdout / stderr の観測、
-観測値どうしの比較を単体処理として提供する。 実行対象の選択や結果の保存先は
-呼び出し側 (`experiments/**`) が決める。
+プログラム終了時の変数格納値の観測、観測値どうしの比較を単体処理として提供する。
+実行対象の選択や結果の保存先は呼び出し側 (`experiments/**`) が決める。
 """
 
 from __future__ import annotations
@@ -17,15 +17,16 @@ import time
 from pathlib import Path
 
 from hayalab.config.hayalab_path import HAYALAB
-from hayalab.config.jsperf_config import (
-    DETERMINIZE_RANDOM_VALUE,
-    DETERMINIZE_TIMESTAMP,
-    NODE_BIN,
-    NODE_PROGRAM_TIMEOUT_SEC,
-)
+from hayalab.config.jsperf_config import DETERMINIZE_RANDOM_VALUE, DETERMINIZE_TIMESTAMP, NODE_BIN, NODE_PROGRAM_TIMEOUT_SEC
+from hayalab.gumtree import collect_node, gum_parse
 from hayalab.utils.file.exec import classify_node_error
 
-__all__ = ["replace_non_deterministic", "observe_output", "equivalent_output"]
+__all__ = [
+    "replace_non_deterministic",
+    "observe_output",
+    "equivalent_output",
+    "equivalent_value",
+]
 
 # --- 実行パラメータ --------------------------------------------------
 TIMEOUT_SEC: float = NODE_PROGRAM_TIMEOUT_SEC  # プログラム 1 回の実行
@@ -35,6 +36,10 @@ STDERR_HEAD_LIMIT: int = 2000
 CHUNK_SIZE: int = 65536
 
 DETERMINIZE_JS: Path = HAYALAB / "jsperf" / "determinize.js"
+INSTRUMENT_VALUE_JS: Path = HAYALAB / "jsperf" / "instrument_value.js"
+
+# 変数名として収集する GumTree (js-treesitter-ng) のノード名
+VARIABLE_NODE_NAMES: tuple[str, ...] = ("identifier", "shorthand_property_identifier_pattern")
 
 # ワーカープロセス固有の実行ファイルを置くルート
 EXEC_ROOT: Path = Path(tempfile.mkdtemp(prefix="hl_equiv_"))
@@ -220,8 +225,114 @@ def compare_return(programs1, programs2):
     """戻り値を比較する"""
 
 
-def equivalent_value(programs1, programs2):
-    """実行終了時の変数の最終格納値を比較する"""
+def observe_value(code: str, node_bin: str = NODE_BIN) -> dict:
+    """1 プログラムについて、変数名収集・計測コード生成・実行を行い、変数格納値の観測値を返す.
+
+    Args:
+        code: 対象プログラム (決定化済み).
+        node_bin: 使用する node バイナリ名またはパス.
+
+    Returns:
+        `names_status`, `instrument_status`, `run_status`, `dump_status`, `values` を持つ辞書。
+        途中で失敗した場合、以降の項目は `None`。
+
+    Raises:
+        RuntimeError: instrument_value.js 自体が異常終了したとき。
+    """
+    observation: dict = {"names_status": None, "instrument_status": None, "run_status": None, "dump_status": None, "values": None}
+
+    try:
+        ast = gum_parse(code, code_clean=False)
+    except Exception:
+        ast = None
+    if ast is None:
+        observation["names_status"] = "parse_error"
+        return observation
+
+    names = sorted({value for _, _, value in collect_node(ast, list(VARIABLE_NODE_NAMES))})
+    observation["names_status"] = "ok"
+
+    # 計測コードを生成
+    dump_path = EXEC_ROOT / f"w{os.getpid()}" / "dump.json"
+    dump_path.parent.mkdir(parents=True, exist_ok=True)
+    dump_path.unlink(missing_ok=True)
+    with (
+        tempfile.NamedTemporaryFile(suffix=".js", delete=True) as code_file,
+        tempfile.NamedTemporaryFile(suffix=".json", delete=True) as names_file,
+    ):
+        code_file.write(code.encode("utf-8"))
+        code_file.flush()
+        names_file.write(json.dumps(names, ensure_ascii=False).encode("utf-8"))
+        names_file.flush()
+        proc = subprocess.run(
+            [node_bin, str(INSTRUMENT_VALUE_JS), code_file.name, names_file.name, str(dump_path)],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+    if proc.returncode != 0:
+        raise RuntimeError(f"instrument_value.js failed (exit={proc.returncode}): {proc.stderr[:500]}")
+    result = json.loads(proc.stdout)
+    observation["instrument_status"] = result["status"]
+    if result["status"] != "ok":
+        return observation
+
+    # 計測コードを実行し、書き出された変数格納値を回収
+    observed = observe_output(result["code"], _worker_exec_path(), node_bin=node_bin)
+    observation["run_status"] = observed["status"]
+    if observed["status"] != "success" or not dump_path.exists():
+        return observation
+
+    dump = json.loads(dump_path.read_text(encoding="utf-8"))
+    observation["dump_status"] = dump["status"]
+    if dump["status"] == "ok":
+        observation["values"] = dump["values"]
+    return observation
+
+
+def equivalent_value(fast_code: str, slow_code: str) -> tuple[bool, str | None, dict, dict]:
+    """2 つのプログラムを実行し、終了時の変数格納値が等価かどうかと理由を返す.
+
+    両方で値を取得できた同名変数のみを比較する。 `toString()` のハッシュが違う、
+    または両方に `valueOf()` の JSON 文字列のハッシュがあって値が違う変数が 1 つでもあれば非等価とする。
+
+    Args:
+        fast_code: fast 側のプログラム (決定化済み).
+        slow_code: slow 側のプログラム (決定化済み).
+
+    Returns:
+        `(等価か, 理由, fast の観測値, slow の観測値)` のタプル。
+        等価なら理由は `None`、非等価なら `"verification_failed"` / `"variable_mismatch"`。
+        観測値には `compared_count` と `mismatched_names` (ソート済み) を含み、
+        比較に至らなかった場合はいずれも `None`。
+    """
+    obs_fast = observe_value(fast_code)
+    obs_slow = observe_value(slow_code)
+
+    if obs_fast["values"] is None or obs_slow["values"] is None:
+        for obs in (obs_fast, obs_slow):
+            obs["compared_count"] = None
+            obs["mismatched_names"] = None
+        return False, "verification_failed", obs_fast, obs_slow
+
+    compared_names = sorted(obs_fast["values"].keys() & obs_slow["values"].keys())
+    mismatched_names: list[str] = []
+    for name in compared_names:
+        fast_record = obs_fast["values"][name]
+        slow_record = obs_slow["values"][name]
+        if fast_record["s_sha256"] != slow_record["s_sha256"]:
+            mismatched_names.append(name)
+        elif "v_sha256" in fast_record and "v_sha256" in slow_record and fast_record["v_sha256"] != slow_record["v_sha256"]:
+            mismatched_names.append(name)
+
+    for obs in (obs_fast, obs_slow):
+        obs["compared_count"] = len(compared_names)
+        obs["mismatched_names"] = mismatched_names
+
+    if mismatched_names:
+        return False, "variable_mismatch", obs_fast, obs_slow
+    return True, None, obs_fast, obs_slow
 
 
 def equivalent_formula(programs1, programs2):

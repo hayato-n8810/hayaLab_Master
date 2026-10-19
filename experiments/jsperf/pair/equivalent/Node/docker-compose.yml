@@ -28,4 +28,4 @@ services:
       - ../../../../../outputs/jsperf/pair/time/Node:/workspace/outputs/jsperf/pair/time/Node:ro
       # 判定結果の出力
       - ../../../../../outputs/jsperf/pair/equivalent/Node:/workspace/outputs/jsperf/pair/equivalent/Node:rw
-    command: uv run python experiments/jsperf/pair/equivalent/Node/run.py --workers 6
+    command: uv run python experiments/jsperf/pair/equivalent/Node/run.py --limit 1
