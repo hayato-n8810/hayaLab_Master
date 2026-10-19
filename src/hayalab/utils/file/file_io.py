@@ -16,16 +16,15 @@ def read_file(file_path: str) -> str:
         return f.read()
 
 
-def write_file(file_path: str, data: str, sort_flg: bool = False) -> None:
+def write_file(file_path: str, data: str) -> None:
     """文字列をファイルとして書き込む。
 
     Args:
         data (str): 書き込むデータ。
         file_path (str): 書き込むファイルのパス。
-        sort_flg (bool): JSONのキーをソートするかどうか。
     """
     Path(file_path).parent.mkdir(parents=True, exist_ok=True)
-    with open(file_path, "w", encoding="utf-8", sort_keys=sort_flg) as f:
+    with open(file_path, "w", encoding="utf-8") as f:
         f.write(data)
 
 
@@ -42,15 +41,16 @@ def read_json(file_path: str) -> dict:
         return json.load(f)
 
 
-def write_json(file_path: str, data: dict) -> None:
+def write_json(file_path: str, data: dict, sort_flg: bool = False) -> None:
     """辞書をJSONファイルとして書き込む。
 
     Args:
         data (dict): 書き込むデータ。
         file_path (str): 書き込むJSONファイルのパス。
+        sort_flg (bool): JSONのキーをソートするかどうか。
     """
     Path(file_path).parent.mkdir(parents=True, exist_ok=True)
-    with open(file_path, "w", encoding="utf-8") as f:
+    with open(file_path, "w", encoding="utf-8", sort_keys=sort_flg) as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
 
 
