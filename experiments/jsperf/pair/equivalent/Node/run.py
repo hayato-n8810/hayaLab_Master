@@ -3,7 +3,8 @@
 `outputs/jsperf/pair/time/Node/pair_programs.json` の各ペアについて、fast / slow を
 決定化して関数ラップし、同一プロセスの同一パスで 1 回ずつ実行する。
 
-- Step 0: fast / slow の片方または両方が空 (空白のみを含む) のペア、および決定化に失敗したペアを除外する
+- Step 0: fast / slow の片方または両方が空 (空白のみを含む) のペア、fast / slow が完全に同一のペア、
+  および決定化に失敗したペアを除外する
 - Step 1: stdout / stderr のハッシュが一致しないペアを除外する
 - Step 2: Step 1 を通過したペアについて、プログラム終了時の変数格納値を比較し、
   両方で取得できた同名変数が 1 つでも一致しないペアを除外する
@@ -18,7 +19,7 @@
 
 出力: `outputs/jsperf/pair/equivalent/Node/`
 - `equivalent_pair.json`: 全ステップ通過ペア (入力と同じ形式)
-- `not_equivalent_pair.json`: 非通過ペアと除外したステップ・理由 (空プログラム・決定化失敗を含む)
+- `not_equivalent_pair.json`: 非通過ペアと除外したステップ・理由 (空プログラム・同一プログラム・決定化失敗を含む)
 - `summary.json`: 通過 / 非通過の件数、理由内訳、比較した変数が 0 件の Step 2 通過ペア数
 """
 
@@ -45,7 +46,7 @@ def _judge_pair(pair: dict) -> dict:
 
     Returns:
         dict: `{"pair": pair, "equivalent": bool, "step": int | None, "reason": dict | None}`
-            - `step`: None=等価, 0=空プログラムまたは決定化失敗, 1=標準出力不一致, 2=変数格納値不一致, 3=完了値不一致
+            - `step`: None=等価, 0=空プログラム・同一プログラム・決定化失敗, 1=標準出力不一致, 2=変数格納値不一致, 3=完了値不一致
             - `reason`: `step` に応じた詳細情報。`step` が None の場合は None
     """
     # 空プログラムを除外
@@ -54,6 +55,15 @@ def _judge_pair(pair: dict) -> dict:
     if fast_empty or slow_empty:
         step0 = {
             "detail": {"fast_empty": fast_empty, "slow_empty": slow_empty},
+            "fast": {"program": pair["fast"]["code"], "determinize_status": None, "stdout_head": None, "stderr_head": None},
+            "slow": {"program": pair["slow"]["code"], "determinize_status": None, "stdout_head": None, "stderr_head": None},
+        }
+        return {"pair": pair, "equivalent": False, "step": 0, "reason": step0}
+
+    # 同一プログラムを除外
+    if pair["fast"]["code"] == pair["slow"]["code"]:
+        step0 = {
+            "detail": {"identical": True},
             "fast": {"program": pair["fast"]["code"], "determinize_status": None, "stdout_head": None, "stderr_head": None},
             "slow": {"program": pair["slow"]["code"], "determinize_status": None, "stdout_head": None, "stderr_head": None},
         }
