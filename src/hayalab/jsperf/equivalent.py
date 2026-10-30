@@ -1,7 +1,7 @@
 """不等価プログラム除外モジュール.
 
 プログラムの決定化 (Babel)、1 回実行による stdout / stderr の観測、
-プログラム終了時の変数格納値の観測、観測値どうしの比較を単体処理として提供する。
+プログラム終了時の変数格納値の観測、プログラムの完了値の観測、観測値どうしの比較を単体処理として提供する。
 実行対象の選択や結果の保存先は呼び出し側 (`experiments/**`) が決める。
 """
 
@@ -26,6 +26,9 @@ __all__ = [
     "observe_output",
     "equivalent_output",
     "equivalent_value",
+    "is_completion_comparable",
+    "observe_completion",
+    "equivalent_formula",
 ]
 
 # --- 実行パラメータ --------------------------------------------------
@@ -37,6 +40,8 @@ CHUNK_SIZE: int = 65536
 
 DETERMINIZE_JS: Path = HAYALAB / "jsperf" / "determinize.js"
 INSTRUMENT_VALUE_JS: Path = HAYALAB / "jsperf" / "instrument_value.js"
+STATEMENT_DIFF_JS: Path = HAYALAB / "jsperf" / "statement_diff.js"
+INSTRUMENT_COMPLETION_JS: Path = HAYALAB / "jsperf" / "instrument_completion.js"
 
 # 変数名として収集する GumTree (js-treesitter-ng) のノード名
 VARIABLE_NODE_NAMES: tuple[str, ...] = ("identifier", "shorthand_property_identifier_pattern")
@@ -335,5 +340,122 @@ def equivalent_value(fast_code: str, slow_code: str) -> tuple[bool, str | None, 
     return True, None, obs_fast, obs_slow
 
 
-def equivalent_formula(programs1, programs2):
-    """式の値を比較する"""
+def is_completion_comparable(fast_code: str, slow_code: str, node_bin: str = NODE_BIN) -> bool:
+    """2 つのプログラムのトップレベル文の差分がちょうど 1 文ずつで、両側とも式文かを判定する.
+
+    トップレベル文をソース文字列で比較し、先頭一致・末尾一致を取り除いた残りを差分とする。
+
+    Args:
+        fast_code: fast 側のプログラム (決定化済み).
+        slow_code: slow 側のプログラム (決定化済み).
+        node_bin: 使用する node バイナリ名またはパス.
+
+    Returns:
+        差分が両側ちょうど 1 文で、いずれも `ExpressionStatement` なら `True`。 どちらかがパースできない場合は `False`。
+
+    Raises:
+        RuntimeError: statement_diff.js 自体が異常終了したとき。
+    """
+    with (
+        tempfile.NamedTemporaryFile(suffix=".js", delete=True) as fast_file,
+        tempfile.NamedTemporaryFile(suffix=".js", delete=True) as slow_file,
+    ):
+        fast_file.write(fast_code.encode("utf-8"))
+        fast_file.flush()
+        slow_file.write(slow_code.encode("utf-8"))
+        slow_file.flush()
+        proc = subprocess.run(
+            [node_bin, str(STATEMENT_DIFF_JS), fast_file.name, slow_file.name],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+    if proc.returncode != 0:
+        raise RuntimeError(f"statement_diff.js failed (exit={proc.returncode}): {proc.stderr[:500]}")
+    return bool(json.loads(proc.stdout)["comparable"])
+
+
+def observe_completion(code: str, node_bin: str = NODE_BIN) -> dict:
+    """1 プログラムについて、計測コード生成・実行を行い、`eval` による完了値の観測値を返す.
+
+    Args:
+        code: 対象プログラム (決定化済み).
+        node_bin: 使用する node バイナリ名またはパス.
+
+    Returns:
+        `instrument_status`, `run_status`, `dump_status`, `value` を持つ辞書。
+        `value` は `{"s_sha256": ..., "v_sha256": ...}` (`v_sha256` はプレーンオブジェクトのみ)。
+        途中で失敗した場合、または値を記録できない場合 (関数値 / `toString()` が例外) は `value` が `None`。
+
+    Raises:
+        RuntimeError: instrument_completion.js 自体が異常終了したとき。
+    """
+    observation: dict = {"instrument_status": None, "run_status": None, "dump_status": None, "value": None}
+
+    # 計測コードを生成
+    dump_path = EXEC_ROOT / f"w{os.getpid()}" / "completion.json"
+    dump_path.parent.mkdir(parents=True, exist_ok=True)
+    dump_path.unlink(missing_ok=True)
+    with tempfile.NamedTemporaryFile(suffix=".js", delete=True) as code_file:
+        code_file.write(code.encode("utf-8"))
+        code_file.flush()
+        proc = subprocess.run(
+            [node_bin, str(INSTRUMENT_COMPLETION_JS), code_file.name, str(dump_path)],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+    if proc.returncode != 0:
+        raise RuntimeError(f"instrument_completion.js failed (exit={proc.returncode}): {proc.stderr[:500]}")
+    result = json.loads(proc.stdout)
+    observation["instrument_status"] = result["status"]
+    if result["status"] != "ok":
+        return observation
+
+    # 計測コードを実行し、書き出された完了値を回収
+    observed = observe_output(result["code"], _worker_exec_path(), node_bin=node_bin)
+    observation["run_status"] = observed["status"]
+    if observed["status"] != "success" or not dump_path.exists():
+        return observation
+
+    dump = json.loads(dump_path.read_text(encoding="utf-8"))
+    observation["dump_status"] = dump["status"]
+    if dump["status"] == "ok":
+        observation["value"] = dump["value"]
+    return observation
+
+
+def equivalent_formula(fast_code: str, slow_code: str) -> tuple[bool, str | None, dict, dict]:
+    """2 つのプログラムの完了値が等価かどうかと理由を返す.
+
+    トップレベル文の差分が両側ちょうど 1 文で、いずれも式文のペアのみを比較する。 両方で完了値を記録でき、
+    `toString()` のハッシュが違う、または両方に `valueOf()` の JSON 文字列のハッシュがあって値が違う場合に非等価とする。
+    比較できないペア (差分が 1 文ずつの式文でない / 実行失敗 / 片側以上で値を記録できない) は等価として扱う。
+
+    Args:
+        fast_code: fast 側のプログラム (決定化済み).
+        slow_code: slow 側のプログラム (決定化済み).
+
+    Returns:
+        `(等価か, 理由, fast の観測値, slow の観測値)` のタプル。
+        等価なら理由は `None`、非等価なら `"completion_value_mismatch"`。
+        観測値は `comparable` と `observe_completion` の各項目を持ち、比較しなかった場合は後者が `None`。
+    """
+    empty = {"instrument_status": None, "run_status": None, "dump_status": None, "value": None}
+    if not is_completion_comparable(fast_code, slow_code):
+        return True, None, {"comparable": False, **empty}, {"comparable": False, **empty}
+
+    obs_fast = {"comparable": True, **observe_completion(fast_code)}
+    obs_slow = {"comparable": True, **observe_completion(slow_code)}
+    fast_value = obs_fast["value"]
+    slow_value = obs_slow["value"]
+    if fast_value is None or slow_value is None:
+        return True, None, obs_fast, obs_slow
+
+    if fast_value["s_sha256"] != slow_value["s_sha256"]:
+        return False, "completion_value_mismatch", obs_fast, obs_slow
+    if "v_sha256" in fast_value and "v_sha256" in slow_value and fast_value["v_sha256"] != slow_value["v_sha256"]:
+        return False, "completion_value_mismatch", obs_fast, obs_slow
+    return True, None, obs_fast, obs_slow
