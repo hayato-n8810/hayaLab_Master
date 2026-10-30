@@ -70,10 +70,11 @@ _up () {
 # $1 compose, $2 以降 merge_shards.py への引数
 _merge () {
   local compose="$1"; shift
-  docker compose -f "$compose" run --rm --no-deps \
+  # nohup 配下では stdin が読めないため、TTY を割り当てず stdin を /dev/null に向ける
+  docker compose -f "$compose" run --rm --no-deps -T \
     -v "$MERGE:/workspace/experiments/jsperf/measure/merge_shards.py:ro" \
     "$(docker compose -f "$compose" config --services | head -n 1)" \
-    uv run python experiments/jsperf/measure/merge_shards.py "$@"
+    uv run python experiments/jsperf/measure/merge_shards.py "$@" < /dev/null
 }
 
 run_env () {
