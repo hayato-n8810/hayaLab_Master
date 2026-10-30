@@ -50,8 +50,8 @@ def write_json(file_path: str, data: dict, sort_flg: bool = False) -> None:
         sort_flg (bool): JSONのキーをソートするかどうか。
     """
     Path(file_path).parent.mkdir(parents=True, exist_ok=True)
-    with open(file_path, "w", encoding="utf-8", sort_keys=sort_flg) as f:
-        json.dump(data, f, ensure_ascii=False, indent=4)
+    with open(file_path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=4, sort_keys=sort_flg)
 
 
 def read_jsonl(file_path: str) -> list[dict]:
