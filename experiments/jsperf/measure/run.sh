@@ -1,28 +1,29 @@
 #!/usr/bin/env bash
-# jsPerf 実行時間計測ドライバ (本計測 + 再計測)。
+# jsPerf 実行時間計測ドライバ (本計測 + 再計測 + 結合)。
 # Node -> Playwright の順に (環境間は直列で)、各環境内は複数シャード (Node 16 / Playwright 8) を
 # 別々の物理コアに pin した Docker コンテナで擬似並列に計測する。同一ベンチ (ペア) は同一シャード
 # に割り当てられるため、ペア内の相対比較の妥当性は保たれる。結果の結合は merge_shards.py で行う。
 #
 # 使い方:
-#   bash run.sh                                # 本計測 -> 再計測 (Node, Playwright 両方)
-#   bash run.sh Node                           # 指定環境のみ 本計測 -> 再計測 (複数指定可)
-#   bash run.sh --resume                       # 再計測のみ (本計測はスキップ)
-#   bash run.sh --resume --redo-status error   # 再計測のみ + error レコードも再計測対象にする
-#   bash run.sh --resume Playwright            # Playwright だけ再計測のみ
-#   bash run.sh --redo-status error            # 本計測 -> 再計測。再計測で error も対象にする
+#   bash run.sh                                # 本計測 -> 再計測 -> 結合 (Node, Playwright 両方)
+#   bash run.sh Node                           # 指定環境のみ 本計測 -> 再計測 -> 結合 (複数指定可)
+#   bash run.sh --resume                       # 再計測 -> 結合 (本計測はスキップ)
+#   bash run.sh --resume --redo-status error   # 再計測 -> 結合 + error レコードも再計測対象にする
+#   bash run.sh --resume Playwright            # Playwright だけ 再計測 -> 結合
+#   bash run.sh --redo-status error            # 本計測 -> 再計測 -> 結合。再計測で error も対象にする
 #
-# 各環境は「本計測フェーズ」と「再計測フェーズ」からなる:
+# Python / uv はホストに不要。merge_shards.py も各環境の計測用イメージ内で実行する。
+#
+# 各環境は「本計測フェーズ」「再計測フェーズ」「結合フェーズ」からなる:
 #   - 本計測フェーズ (--resume 指定時はスキップ): 全ベンチを計測し results.shard*.jsonl を出力。
 #   - 再計測フェーズ (常に実行): 既存 results を読み取り専用で参照し、未完了ベンチ (本計測の
 #     取りこぼし。--redo-status 指定時はその status も) だけを全シャードへ再配分して計測し、
 #     results_retry 系列へ分離出力する (本計測の原本を保全)。開始前に中断セッションの残骸を
 #     merge_shards.py --consolidate-retry で result_retry.jsonl へ畳み込む。
+#   - 結合フェーズ (常に実行): merge_shards.py で results_retry を本計測へ上書き適用し、
+#     確定版 results.jsonl と summary.json を作る。
 # 本計測が全完走していれば再計測フェーズは対象ゼロで即終了する (取りこぼし時の保険)。
 # ログは本計測が run.log、再計測が run_retry.log。
-#
-# 計測後の結合 (results_retry を本計測へ上書き適用して確定版 results.jsonl を作る) は別途:
-#   uv run python experiments/jsperf/measure/merge_shards.py --env <Node|Playwright>
 #
 # コア割当は各 docker-compose.yml のデフォルト (この機の NUMA/物理コアに合わせ済み) を使う。
 # 別ホストでは NODE_SHARD*_CPUS / PW_SHARD*_CPUS で上書き。メモリは 180GiB と潤沢なため無制限。
@@ -65,6 +66,16 @@ _up () {
   docker compose -f "$2" down
 }
 
+# merge_shards.py を計測用イメージの 1 サービスで使い捨て起動して実行する
+# $1 compose, $2 以降 merge_shards.py への引数
+_merge () {
+  local compose="$1"; shift
+  docker compose -f "$compose" run --rm --no-deps \
+    -v "$MERGE:/workspace/experiments/jsperf/measure/merge_shards.py:ro" \
+    "$(docker compose -f "$compose" config --services | head -n 1)" \
+    uv run python experiments/jsperf/measure/merge_shards.py "$@"
+}
+
 run_env () {
   name="$1"                              # Node / Playwright
   compose="$HERE/$name/docker-compose.yml"
@@ -88,15 +99,19 @@ run_env () {
 
   # --- 再計測フェーズ (常に実行。本計測の取りこぼし + --redo-status 指定分を救済) ---
   echo "[run] === $name: 再計測の前処理 (consolidate-retry) ==="
-  ( cd "$ROOT" && uv run python "$MERGE" --env "$name" --consolidate-retry )
+  _merge "$compose" --env "$name" --consolidate-retry
   echo "[run] === $name: 再計測 ($RETRY_ARGS)。進捗は $outdir/results_retry.shard*.jsonl の行数で確認できます ==="
   _up "$name" "$compose" "$outdir" "$RETRY_ARGS" "_retry"
 
-  echo "[run] === $name: 完了 (結合は merge_shards.py --env $name で) ==="
+  # --- 結合フェーズ (常に実行。確定版 results.jsonl / summary.json を作る) ---
+  echo "[run] === $name: 結合 (merge_shards.py) ==="
+  _merge "$compose" --env "$name"
+
+  echo "[run] === $name: 完了 ($outdir/results.jsonl) ==="
 }
 
 # 環境間は直列に実行する (ホスト全体でコア競合を避けるため同時起動しない)
 for name in $ENVS; do
   run_env "$name"
 done
-echo "[run] 全計測完了 ($ENVS )  結合: uv run python $MERGE --env <Node|Playwright>"
+echo "[run] 全計測・結合完了 ($ENVS )"
