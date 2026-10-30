@@ -26,11 +26,13 @@ x-pw-base: &pw-base
     # コンテナ内の Python 用 playwright ブラウザはイメージ同梱のものを使う
     PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
   volumes:
-    # uv run が hayalab を解決するためのルート要素 (README.md は pyproject の readme 参照先)
+    # uv run が hayalab を解決するためのルート要素 (README.md は pyproject の readme 参照先、
+    # .python-version は uv が使う Python のバージョン固定)
     - ../../../../src:/workspace/src:ro
     - ../../../../pyproject.toml:/workspace/pyproject.toml:ro
     - ../../../../uv.lock:/workspace/uv.lock:ro
     - ../../../../README.md:/workspace/README.md:ro
+    - ../../../../.python-version:/workspace/.python-version:ro
     # 実行スクリプト
     - ../../../../experiments/jsperf/measure/Playwright:/workspace/experiments/jsperf/measure/Playwright:ro
     # 入力 (measure ハーネス)。ブラウザはファイルに書けないため ro でよい

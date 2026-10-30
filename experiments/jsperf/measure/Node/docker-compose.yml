@@ -23,11 +23,13 @@ x-node-base: &node-base
     UV_LINK_MODE: copy
   # NODE_PATH はイメージ側 /opt/npm/node_modules を指す (Dockerfile)
   volumes:
-    # uv run が hayalab を解決するためのルート要素 (README.md は pyproject の readme 参照先)
+    # uv run が hayalab を解決するためのルート要素 (README.md は pyproject の readme 参照先、
+    # .python-version は uv が使う Python のバージョン固定)
     - ../../../../src:/workspace/src:ro
     - ../../../../pyproject.toml:/workspace/pyproject.toml:ro
     - ../../../../uv.lock:/workspace/uv.lock:ro
     - ../../../../README.md:/workspace/README.md:ro
+    - ../../../../.python-version:/workspace/.python-version:ro
     # 実行スクリプト (node_modules はイメージ側 /opt/npm にあるためここには不要)
     - ../../../../experiments/jsperf/measure/Node:/workspace/experiments/jsperf/measure/Node:ro
     # 入力 (measure ハーネス) + result.json 書き出し
