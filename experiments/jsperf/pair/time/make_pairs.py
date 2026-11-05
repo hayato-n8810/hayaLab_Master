@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import argparse
 from collections import defaultdict
+from concurrent.futures import ProcessPoolExecutor
 from itertools import combinations
 from pathlib import Path
 
@@ -40,6 +41,8 @@ from hayalab.jsperf.interval import disjoint_interval_pairs, mean_confidence_int
 
 # --- Constants (ファイル先頭で調整するハイパーパラメータ) ----------
 PLAYWRIGHT_RESOLUTION_NS: int = 5_000  # performance.now() の分解能 (crossOriginIsolated 時 5 µs)
+DEFAULT_MAX_WORKERS: int = 8
+CHUNK_SIZE: int = 64
 
 
 # --- Helpers (per-benchmark / per-test 処理) ------------------------
@@ -81,11 +84,26 @@ def _program_path(step1_bench: Path, step3_bench: Path, slug_id: str, test_idx: 
     return root / slug_id / f"program_{test_idx}.js"
 
 
+def _load_program(path: Path) -> str | None:
+    """元プログラムを読み出して整形する (ProcessPoolExecutor のワーカー).
+
+    Args:
+        path: program_<i>.js のパス.
+
+    Returns:
+        code_clean 適用後のコード。 ファイルが存在しなければ None.
+    """
+    if not path.exists():
+        return None
+    return hayalab.code_clean(path.read_text(encoding="utf-8"))
+
+
 # --- Main flow -----------------------------------------------------
 if __name__ == "__main__":
     # --- Section 1: 引数・パス解決 ---
     parser = argparse.ArgumentParser(description="信頼区間が重複しない実行時間ペアを作成する.")
     parser.add_argument("--env", choices=["Node", "Playwright"], default="Node")
+    parser.add_argument("--max-workers", type=int, default=DEFAULT_MAX_WORKERS)
     args = parser.parse_args()
 
     CONFIG = PathConfig()
@@ -185,36 +203,33 @@ if __name__ == "__main__":
         if env is not None:
             env_by_slug[slug_id] = env
 
-    # --- Section 6: 全 test ペアのコード読み出し ---
-    code_cache: dict[tuple[str, int], str] = {}
+    # --- Section 6: 全 test ペアに含まれるプログラムの読み出しと整形 (並列) ---
+    program_keys = sorted({(slug_id, idx) for slug_id, a, b in all_pairs if slug_id in env_by_slug for idx in (a, b)})
+    program_paths = [_program_path(STEP1_BENCH, STEP3_BENCH, slug_id, idx, env_by_slug[slug_id]) for slug_id, idx in program_keys]
+    with ProcessPoolExecutor(max_workers=args.max_workers) as executor:
+        code_by_key: dict[tuple[str, int], str | None] = dict(zip(program_keys, executor.map(_load_program, program_paths, chunksize=CHUNK_SIZE)))
+    print(f"[pair-all] {args.env}: programs={sum(c is not None for c in code_by_key.values())}/{len(program_keys)}")
+
+    # --- Section 7: 全 test ペアの組み立て ---
     html_cache: dict[str, str] = {}
     entries: list[dict] = []
     skipped_no_env = 0
     skipped_missing_program = 0
 
     for slug_id, idx_a, idx_b in all_pairs:
-        env = env_by_slug.get(slug_id)
-        if env is None:
+        if slug_id not in env_by_slug:
             skipped_no_env += 1
             continue
-        programs: list[dict] = []
-        for idx in (idx_a, idx_b):
-            key = (slug_id, idx)
-            if key not in code_cache:
-                path = _program_path(STEP1_BENCH, STEP3_BENCH, slug_id, idx, env)
-                if not path.exists():
-                    break
-                code_cache[key] = path.read_text(encoding="utf-8")
-            programs.append({"test_id": idx, "code": hayalab.code_clean(code_cache[key])})
-        if len(programs) < 2:
+        if code_by_key[(slug_id, idx_a)] is None or code_by_key[(slug_id, idx_b)] is None:
             skipped_missing_program += 1
             continue
+        programs = [{"test_id": idx, "code": code_by_key[(slug_id, idx)]} for idx in (idx_a, idx_b)]
         if slug_id not in html_cache:
             html_path = STEP1_BENCH / slug_id / "page_html.html"
             html_cache[slug_id] = html_path.read_text(encoding="utf-8") if html_path.exists() else ""
         entries.append({"slug_id": slug_id, "html": html_cache[slug_id], "programs": programs})
 
-    # --- Section 7: 全 test ペアのプログラム出力 ---
+    # --- Section 8: 全 test ペアのプログラム出力 ---
     all_out_path = out_dir / "all_pair_programs.json"
     hayalab.write_json(all_out_path, entries)
     print(f"[pair-all] {args.env}: pairs={len(entries)}/{len(all_pairs)} (no_env={skipped_no_env} missing_program={skipped_missing_program}) -> {all_out_path}")
