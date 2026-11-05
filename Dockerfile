@@ -18,7 +18,7 @@ ENV PATH=$PATH:/opt/gumtree/bin
 # Node と pnpm のインストール
 RUN curl -fsSL https://deb.nodesource.com/setup_25.x | bash - \
     && apt-get install -y nodejs \
-    && npm install -g pnpm@10.24.0
+    && npm install -g pnpm@12.16.1
 
 WORKDIR /works
 COPY package.json pnpm-lock.yaml .npmrc ./
