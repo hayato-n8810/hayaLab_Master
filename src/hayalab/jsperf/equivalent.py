@@ -85,6 +85,142 @@ def _drain(pipe, digest, state: dict, head_limit: int) -> None:
     pipe.close()
 
 
+def _variable_names(code: str) -> list[str] | None:
+    """プログラム中の変数名を GumTree で収集する.
+
+    Args:
+        code: 対象プログラム.
+
+    Returns:
+        ソート済みの変数名一覧。 パースできない場合は `None`。
+    """
+    try:
+        ast = gum_parse(code, code_clean=False)
+    except Exception:
+        ast = None
+    if ast is None:
+        return None
+    return sorted({value for _, _, value in collect_node(ast, list(VARIABLE_NODE_NAMES))})
+
+
+def _instrument_value_code(code: str, names: list[str], dump_target: str, node_bin: str = NODE_BIN) -> dict:
+    """instrument_value.js で変数格納値の計測コードを生成する.
+
+    Args:
+        code: 対象プログラム.
+        names: 読み出す変数名一覧.
+        dump_target: 書き出し先パス。 `"-"` ならブラウザ用 (`window.__hl_collect`) のコードを生成する.
+        node_bin: 使用する node バイナリ名またはパス.
+
+    Returns:
+        `{"code": str, "status": str}`。
+
+    Raises:
+        RuntimeError: instrument_value.js 自体が異常終了したとき。
+    """
+    with (
+        tempfile.NamedTemporaryFile(suffix=".js", delete=True) as code_file,
+        tempfile.NamedTemporaryFile(suffix=".json", delete=True) as names_file,
+    ):
+        code_file.write(code.encode("utf-8"))
+        code_file.flush()
+        names_file.write(json.dumps(names, ensure_ascii=False).encode("utf-8"))
+        names_file.flush()
+        proc = subprocess.run(
+            [node_bin, str(INSTRUMENT_VALUE_JS), code_file.name, names_file.name, dump_target],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+    if proc.returncode != 0:
+        raise RuntimeError(f"instrument_value.js failed (exit={proc.returncode}): {proc.stderr[:500]}")
+    return json.loads(proc.stdout)
+
+
+def _instrument_completion_code(code: str, dump_target: str, node_bin: str = NODE_BIN) -> dict:
+    """instrument_completion.js で完了値の計測コードを生成する.
+
+    Args:
+        code: 対象プログラム.
+        dump_target: 書き出し先パス。 `"-"` ならブラウザ用 (`window.__hl_collect`) のコードを生成する.
+        node_bin: 使用する node バイナリ名またはパス.
+
+    Returns:
+        `{"code": str, "status": str}`。
+
+    Raises:
+        RuntimeError: instrument_completion.js 自体が異常終了したとき。
+    """
+    with tempfile.NamedTemporaryFile(suffix=".js", delete=True) as code_file:
+        code_file.write(code.encode("utf-8"))
+        code_file.flush()
+        proc = subprocess.run(
+            [node_bin, str(INSTRUMENT_COMPLETION_JS), code_file.name, dump_target],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+    if proc.returncode != 0:
+        raise RuntimeError(f"instrument_completion.js failed (exit={proc.returncode}): {proc.stderr[:500]}")
+    return json.loads(proc.stdout)
+
+
+def _compare_values(obs_fast: dict, obs_slow: dict) -> tuple[bool, str | None]:
+    """変数格納値の観測値どうしを比較し、`compared_count` / `mismatched_names` を両観測値に書き込む.
+
+    Args:
+        obs_fast: fast 側の観測値 (`values` を持つ).
+        obs_slow: slow 側の観測値 (`values` を持つ).
+
+    Returns:
+        `(等価か, 理由)`。 理由は `None` / `"verification_failed"` / `"variable_mismatch"`。
+    """
+    if obs_fast["values"] is None or obs_slow["values"] is None:
+        for obs in (obs_fast, obs_slow):
+            obs["compared_count"] = None
+            obs["mismatched_names"] = None
+        return False, "verification_failed"
+
+    compared_names = sorted(obs_fast["values"].keys() & obs_slow["values"].keys())
+    mismatched_names: list[str] = []
+    for name in compared_names:
+        fast_record = obs_fast["values"][name]
+        slow_record = obs_slow["values"][name]
+        if fast_record["s_sha256"] != slow_record["s_sha256"]:
+            mismatched_names.append(name)
+        elif "v_sha256" in fast_record and "v_sha256" in slow_record and fast_record["v_sha256"] != slow_record["v_sha256"]:
+            mismatched_names.append(name)
+
+    for obs in (obs_fast, obs_slow):
+        obs["compared_count"] = len(compared_names)
+        obs["mismatched_names"] = mismatched_names
+
+    if mismatched_names:
+        return False, "variable_mismatch"
+    return True, None
+
+
+def _compare_completion(fast_value: dict | None, slow_value: dict | None) -> tuple[bool, str | None]:
+    """完了値の記録どうしを比較する. 片側以上が `None` なら比較できないため等価とする.
+
+    Args:
+        fast_value: fast 側の完了値の記録 (`s_sha256`, 任意で `v_sha256`).
+        slow_value: slow 側の完了値の記録.
+
+    Returns:
+        `(等価か, 理由)`。 理由は `None` / `"completion_value_mismatch"`。
+    """
+    if fast_value is None or slow_value is None:
+        return True, None
+    if fast_value["s_sha256"] != slow_value["s_sha256"]:
+        return False, "completion_value_mismatch"
+    if "v_sha256" in fast_value and "v_sha256" in slow_value and fast_value["v_sha256"] != slow_value["v_sha256"]:
+        return False, "completion_value_mismatch"
+    return True, None
+
+
 # --- 単体処理 --------------------------------------------------------
 def replace_non_deterministic(code: str, node_bin: str = NODE_BIN) -> tuple[str, str]:
     """プログラムの非決定的な値を Babel で決定化する.
@@ -246,39 +382,17 @@ def observe_value(code: str, node_bin: str = NODE_BIN) -> dict:
     """
     observation: dict = {"names_status": None, "instrument_status": None, "run_status": None, "dump_status": None, "values": None}
 
-    try:
-        ast = gum_parse(code, code_clean=False)
-    except Exception:
-        ast = None
-    if ast is None:
+    names = _variable_names(code)
+    if names is None:
         observation["names_status"] = "parse_error"
         return observation
-
-    names = sorted({value for _, _, value in collect_node(ast, list(VARIABLE_NODE_NAMES))})
     observation["names_status"] = "ok"
 
     # 計測コードを生成
     dump_path = EXEC_ROOT / f"w{os.getpid()}" / "dump.json"
     dump_path.parent.mkdir(parents=True, exist_ok=True)
     dump_path.unlink(missing_ok=True)
-    with (
-        tempfile.NamedTemporaryFile(suffix=".js", delete=True) as code_file,
-        tempfile.NamedTemporaryFile(suffix=".json", delete=True) as names_file,
-    ):
-        code_file.write(code.encode("utf-8"))
-        code_file.flush()
-        names_file.write(json.dumps(names, ensure_ascii=False).encode("utf-8"))
-        names_file.flush()
-        proc = subprocess.run(
-            [node_bin, str(INSTRUMENT_VALUE_JS), code_file.name, names_file.name, str(dump_path)],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-        )
-    if proc.returncode != 0:
-        raise RuntimeError(f"instrument_value.js failed (exit={proc.returncode}): {proc.stderr[:500]}")
-    result = json.loads(proc.stdout)
+    result = _instrument_value_code(code, names, str(dump_path), node_bin=node_bin)
     observation["instrument_status"] = result["status"]
     if result["status"] != "ok":
         return observation
@@ -314,30 +428,8 @@ def equivalent_value(fast_code: str, slow_code: str) -> tuple[bool, str | None, 
     """
     obs_fast = observe_value(fast_code)
     obs_slow = observe_value(slow_code)
-
-    if obs_fast["values"] is None or obs_slow["values"] is None:
-        for obs in (obs_fast, obs_slow):
-            obs["compared_count"] = None
-            obs["mismatched_names"] = None
-        return False, "verification_failed", obs_fast, obs_slow
-
-    compared_names = sorted(obs_fast["values"].keys() & obs_slow["values"].keys())
-    mismatched_names: list[str] = []
-    for name in compared_names:
-        fast_record = obs_fast["values"][name]
-        slow_record = obs_slow["values"][name]
-        if fast_record["s_sha256"] != slow_record["s_sha256"]:
-            mismatched_names.append(name)
-        elif "v_sha256" in fast_record and "v_sha256" in slow_record and fast_record["v_sha256"] != slow_record["v_sha256"]:
-            mismatched_names.append(name)
-
-    for obs in (obs_fast, obs_slow):
-        obs["compared_count"] = len(compared_names)
-        obs["mismatched_names"] = mismatched_names
-
-    if mismatched_names:
-        return False, "variable_mismatch", obs_fast, obs_slow
-    return True, None, obs_fast, obs_slow
+    is_equivalent, reason = _compare_values(obs_fast, obs_slow)
+    return is_equivalent, reason, obs_fast, obs_slow
 
 
 def is_completion_comparable(fast_code: str, slow_code: str, node_bin: str = NODE_BIN) -> bool:
@@ -397,19 +489,7 @@ def observe_completion(code: str, node_bin: str = NODE_BIN) -> dict:
     dump_path = EXEC_ROOT / f"w{os.getpid()}" / "completion.json"
     dump_path.parent.mkdir(parents=True, exist_ok=True)
     dump_path.unlink(missing_ok=True)
-    with tempfile.NamedTemporaryFile(suffix=".js", delete=True) as code_file:
-        code_file.write(code.encode("utf-8"))
-        code_file.flush()
-        proc = subprocess.run(
-            [node_bin, str(INSTRUMENT_COMPLETION_JS), code_file.name, str(dump_path)],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-        )
-    if proc.returncode != 0:
-        raise RuntimeError(f"instrument_completion.js failed (exit={proc.returncode}): {proc.stderr[:500]}")
-    result = json.loads(proc.stdout)
+    result = _instrument_completion_code(code, str(dump_path), node_bin=node_bin)
     observation["instrument_status"] = result["status"]
     if result["status"] != "ok":
         return observation
@@ -449,13 +529,5 @@ def equivalent_formula(fast_code: str, slow_code: str) -> tuple[bool, str | None
 
     obs_fast = {"comparable": True, **observe_completion(fast_code)}
     obs_slow = {"comparable": True, **observe_completion(slow_code)}
-    fast_value = obs_fast["value"]
-    slow_value = obs_slow["value"]
-    if fast_value is None or slow_value is None:
-        return True, None, obs_fast, obs_slow
-
-    if fast_value["s_sha256"] != slow_value["s_sha256"]:
-        return False, "completion_value_mismatch", obs_fast, obs_slow
-    if "v_sha256" in fast_value and "v_sha256" in slow_value and fast_value["v_sha256"] != slow_value["v_sha256"]:
-        return False, "completion_value_mismatch", obs_fast, obs_slow
-    return True, None, obs_fast, obs_slow
+    is_equivalent, reason = _compare_completion(obs_fast["value"], obs_slow["value"])
+    return is_equivalent, reason, obs_fast, obs_slow

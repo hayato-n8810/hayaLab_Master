@@ -1,0 +1,41 @@
+# Playwright 等価性検証コンテナ (experiments/jsperf/measure/Playwright/docker-compose.yml を土台とする最小マウント)
+# 検証に必要なパスのみを /workspace 配下へ同一相対構造でバインドし、
+# 無関係なツリーからの干渉を避ける。 実行時間は測らないためコア pin は行わず、
+# 並列化は run.py のペア単位ワーカーが担う。
+# page_html の外部 <script src> を取得するためネットワークはデフォルト (bridge) のまま。
+#
+# EQUIV_ARGS で run.py への追加引数を渡す (例: EQUIV_ARGS="--limit 100")。
+x-pw-base: &pw-base
+  build:
+    context: .
+    dockerfile: Dockerfile
+  image: jsperf-equivalent-playwright
+  working_dir: /workspace
+  init: true
+  ipc: host  # Chromium の /dev/shm 不足によるクラッシュ回避 (並列ワーカーで複数 Chromium を起動するため)
+  environment:
+    PYTHONUNBUFFERED: "1"
+    UV_LINK_MODE: copy
+    # コンテナ内の Python 用 playwright ブラウザはイメージ同梱のものを使う
+    PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
+  # NODE_PATH はイメージ側 /opt/npm/node_modules を指す (Dockerfile)
+  volumes:
+    # uv run が hayalab を解決するためのルート要素 (README.md は pyproject の readme 参照先、
+    # .python-version は uv が使う Python のバージョン固定)
+    - ../../../../../src:/workspace/src:ro
+    - ../../../../../pyproject.toml:/workspace/pyproject.toml:ro
+    - ../../../../../uv.lock:/workspace/uv.lock:ro
+    - ../../../../../README.md:/workspace/README.md:ro
+    - ../../../../../.python-version:/workspace/.python-version:ro
+    # 実行スクリプト
+    - ../../../../../experiments/jsperf/pair/equivalent/Playwright:/workspace/experiments/jsperf/pair/equivalent/Playwright:ro
+    # 入力 (ペアと元プログラム)
+    - ../../../../../outputs/jsperf/pair/time/Playwright:/workspace/outputs/jsperf/pair/time/Playwright:ro
+    # 判定結果の出力
+    - ../../../../../outputs/jsperf/pair/equivalent/Playwright:/workspace/outputs/jsperf/pair/equivalent/Playwright:rw
+
+services:
+  equiv-playwright:
+    <<: *pw-base
+    container_name: jsperf-equivalent-playwright
+    command: uv run python experiments/jsperf/pair/equivalent/Playwright/run.py ${EQUIV_ARGS:-}

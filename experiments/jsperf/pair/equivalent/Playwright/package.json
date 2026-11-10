@@ -1,0 +1,10 @@
+{
+  "name": "jsperf-equivalent-playwright",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Babel for determinize / instrument scripts in src/hayalab/jsperf",
+  "dependencies": {
+    "@babel/generator": "^8.1.0",
+    "@babel/parser": "^8.1.0"
+  }
+}

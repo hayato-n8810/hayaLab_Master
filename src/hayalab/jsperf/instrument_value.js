@@ -1,6 +1,7 @@
 // プログラム終了時の変数格納値を書き出す計測コードを生成する Babel 変換
 // 引数で受け取った JS ファイル・名前一覧 (JSON 配列)・書き出し先パスから、
 // そのまま実行できる計測コードを {code, status} の JSON で stdout へ返す
+// 書き出し先パスが "-" のときはブラウザ用に、ハッシュ化前の文字列を返す window.__hl_collect() を定義する
 const fs = require("fs");
 const { parse } = require("@babel/parser");
 const generate = require("@babel/generator").default;
@@ -25,20 +26,35 @@ function buildReaderNodes(names) {
 // program より前に置く前置コード。終了時に名前ごとの値を読み出し、ハッシュ化して書き出す
 // program による書き換えに備え、読み出し処理が使う組み込みは program より先に退避する
 function buildPrelude(names, dumpPath) {
-  return `const __hl_process = process;
+  const browser = dumpPath === "-";
+  const header = browser
+    ? `const __hl_window = window;
+const __hl_JSON = JSON;
+function __hl_sha256(text) {
+  return text;
+}
+`
+    : `const __hl_process = process;
 const __hl_JSON = JSON;
 const __hl_fs = require("fs");
 const __hl_crypto = require("crypto");
 const __hl_dump_path = ${JSON.stringify(dumpPath)};
-const __hl_names = ${JSON.stringify(names)};
 function __hl_sha256(text) {
   return __hl_crypto.createHash("sha256").update(text, "utf8").digest("hex");
 }
+`;
+  const emit = browser
+    ? `__hl_window.__hl_collect = __hl_collect;
+`
+    : `__hl_process.once("exit", function () {
+  __hl_fs.writeFileSync(__hl_dump_path, __hl_JSON.stringify(__hl_collect()));
+});
+`;
+  return `${header}const __hl_names = ${JSON.stringify(names)};
 var __hl_get;
-__hl_process.once("exit", function () {
+function __hl_collect() {
   if (typeof __hl_get !== "function") {
-    __hl_fs.writeFileSync(__hl_dump_path, __hl_JSON.stringify({ status: "no_reader" }));
-    return;
+    return { status: "no_reader" };
   }
   const values = {};
   for (const name of __hl_names) {
@@ -65,9 +81,9 @@ __hl_process.once("exit", function () {
     }
     values[name] = record;
   }
-  __hl_fs.writeFileSync(__hl_dump_path, __hl_JSON.stringify({ status: "ok", values: values }));
-});
-`;
+  return { status: "ok", values: values };
+}
+${emit}`;
 }
 
 const source = fs.readFileSync(process.argv[2], "utf8");

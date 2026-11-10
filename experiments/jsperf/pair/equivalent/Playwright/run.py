@@ -1,0 +1,248 @@
+"""Step 1 / Step 2 / Step 3 / Step 4: console 出力・変数の最終格納値・完了値・DOM の比較による不等価ペアの除外 (Playwright).
+
+`outputs/jsperf/pair/time/Playwright/pair_programs.json` の各ペアについて、fast / slow を
+決定化し、page_html の後で `new Function(program)()` として実行するハーネス HTML を
+headless Chromium で 1 回ずつロードする (計測時のハーネスと同じ実行形式)。
+
+- Step 0: fast / slow の片方または両方が空 (空白のみを含む) のペア、fast / slow が完全に同一のペア、
+  および決定化に失敗したペアを除外する
+- Step 1: console 出力 (Node の stdout / stderr に倣って振り分け、ブラウザ自身が出すメッセージは除く) の
+  ハッシュが一致しないペアを除外する
+- Step 2: Step 1 を通過したペアについて、プログラム終了時の変数格納値を比較し、
+  両方で取得できた同名変数が 1 つでも一致しないペアを除外する
+- Step 3: Step 2 を通過したペアのうち、トップレベル文の差分が両側ちょうど 1 文の式文であるものについて、
+  `eval` によるプログラムの完了値が一致しないペアを除外する
+- Step 4: Step 3 を通過したペアについて、Step 1 の実行後の DOM (`outerHTML`) が一致しないペアを除外する
+
+fast / slow は同一 URL で読み込むため、スタックトレースに現れる URL が両者で一致する。
+ページの観測は `load` イベント時点で行う。
+
+ペアを単位として並列化し、ワーカープロセスごとに Chromium を 1 つ起動して
+ページごとに BrowserContext を作り直す。 Browser が死亡した場合は次のペアの前に再起動する。
+
+入力:
+- `outputs/jsperf/pair/time/Playwright/pair_programs.json`
+
+出力: `outputs/jsperf/pair/equivalent/Playwright/`
+- `equivalent_pair.json`: 全ステップ通過ペア (入力と同じ形式)
+- `not_equivalent_pair.json`: 非通過ペアと除外したステップ・理由 (空プログラム・同一プログラム・決定化失敗を含む)
+- `summary.json`: 通過 / 非通過の件数、理由内訳
+"""
+
+from __future__ import annotations
+
+import argparse
+from collections import Counter
+from concurrent.futures import ProcessPoolExecutor
+
+from playwright.sync_api import sync_playwright
+
+import hayalab
+from hayalab.config import PathConfig
+from hayalab.jsperf.equivalent import replace_non_deterministic
+from hayalab.jsperf.equivalent_browser import equivalent_dom, equivalent_formula_browser, equivalent_output_browser, equivalent_value_browser
+
+# --- Constants (ファイル先頭で調整するハイパーパラメータ) ----------
+CHUNK_SIZE: int = 4
+
+# ワーカープロセスごとの Playwright / Browser
+_PLAYWRIGHT = None
+_BROWSER = None
+
+
+# --- PoolExecutor worker -------------------------------------------
+def _ensure_browser():
+    """ワーカープロセスの Browser を返す. 未起動または死亡していれば (再) 起動する.
+
+    Returns:
+        Playwright (sync API) の Browser.
+    """
+    global _PLAYWRIGHT, _BROWSER
+    if _BROWSER is not None and _BROWSER.is_connected():
+        return _BROWSER
+    if _PLAYWRIGHT is not None:
+        try:
+            _PLAYWRIGHT.stop()
+        except Exception:
+            pass
+    _PLAYWRIGHT = sync_playwright().start()
+    _BROWSER = _PLAYWRIGHT.chromium.launch(headless=True)
+    return _BROWSER
+
+
+def _judge_pair(pair: dict) -> dict:
+    """1ペアの等価性検証を行う
+
+    Args:
+        pair (dict): `pair_programs.json` の 1 要素
+
+    Returns:
+        dict: `{"pair": pair, "equivalent": bool, "step": int | None, "reason": dict | None}`
+            - `step`: None=等価, 0=空プログラム・同一プログラム・決定化失敗, 1=console 出力不一致,
+              2=変数格納値不一致, 3=完了値不一致, 4=DOM 不一致
+            - `reason`: `step` に応じた詳細情報。`step` が None の場合は None
+    """
+    # 空プログラムを除外
+    fast_empty = pair["fast"]["code"].strip() == ""
+    slow_empty = pair["slow"]["code"].strip() == ""
+    if fast_empty or slow_empty:
+        step0 = {
+            "detail": {"fast_empty": fast_empty, "slow_empty": slow_empty},
+            "fast": {"program": pair["fast"]["code"], "determinize_status": None, "stdout_head": None, "stderr_head": None},
+            "slow": {"program": pair["slow"]["code"], "determinize_status": None, "stdout_head": None, "stderr_head": None},
+        }
+        return {"pair": pair, "equivalent": False, "step": 0, "reason": step0}
+
+    # 同一プログラムを除外
+    if pair["fast"]["code"] == pair["slow"]["code"]:
+        step0 = {
+            "detail": {"identical": True},
+            "fast": {"program": pair["fast"]["code"], "determinize_status": None, "stdout_head": None, "stderr_head": None},
+            "slow": {"program": pair["slow"]["code"], "determinize_status": None, "stdout_head": None, "stderr_head": None},
+        }
+        return {"pair": pair, "equivalent": False, "step": 0, "reason": step0}
+
+    # 非決定的な処理を置換
+    fast_code, fast_status = replace_non_deterministic(pair["fast"]["code"])
+    slow_code, slow_status = replace_non_deterministic(pair["slow"]["code"])
+
+    if fast_status != "ok" or slow_status != "ok":
+        step0 = {
+            "detail": {"fast_status": fast_status, "slow_status": slow_status},
+            "fast": {"program": pair["fast"]["code"], "determinize_status": fast_status, "stdout_head": None, "stderr_head": None},
+            "slow": {"program": pair["slow"]["code"], "determinize_status": slow_status, "stdout_head": None, "stderr_head": None},
+        }
+        return {"pair": pair, "equivalent": False, "step": 0, "reason": step0}
+
+    browser = _ensure_browser()
+    page_html = pair["html"]
+
+    # console 出力を比較
+    is_equivalent, reason, obs_fast, obs_slow = equivalent_output_browser(browser, page_html, fast_code, slow_code)
+    step1 = {
+        "detail": reason,
+        "fast": {
+            "program": pair["fast"]["code"],
+            "determinize_status": fast_status,
+            "status": obs_fast["status"],
+            "error_head": obs_fast["error_head"],
+            "stdout_head": obs_fast["stdout_head"],
+            "stderr_head": obs_fast["stderr_head"],
+            "dom_sha256": obs_fast["dom_sha256"],
+            "failed_scripts": obs_fast["failed_scripts"],
+            "attempts": obs_fast["attempts"],
+        },
+        "slow": {
+            "program": pair["slow"]["code"],
+            "determinize_status": slow_status,
+            "status": obs_slow["status"],
+            "error_head": obs_slow["error_head"],
+            "stdout_head": obs_slow["stdout_head"],
+            "stderr_head": obs_slow["stderr_head"],
+            "dom_sha256": obs_slow["dom_sha256"],
+            "failed_scripts": obs_slow["failed_scripts"],
+            "attempts": obs_slow["attempts"],
+        },
+    }
+    if not is_equivalent:
+        return {"pair": pair, "equivalent": is_equivalent, "step": 1, "reason": step1}
+    obs_page_fast, obs_page_slow = obs_fast, obs_slow
+
+    # 変数の最終格納値を比較
+    is_equivalent, reason, obs_fast, obs_slow = equivalent_value_browser(browser, page_html, fast_code, slow_code)
+    step2 = {
+        "detail": reason,
+        "compared_count": obs_fast["compared_count"],
+        "mismatched_names": obs_fast["mismatched_names"],
+        "fast": {"program": pair["fast"]["code"], "determinize_status": fast_status, "names_status": obs_fast["names_status"], "instrument_status": obs_fast["instrument_status"]},
+        "slow": {"program": pair["slow"]["code"], "determinize_status": slow_status, "names_status": obs_slow["names_status"], "instrument_status": obs_slow["instrument_status"]},
+    }
+    if not is_equivalent:
+        return {"pair": pair, "equivalent": is_equivalent, "step": 2, "reason": step2}
+
+    # 完了値を比較
+    is_equivalent, reason, obs_fast, obs_slow = equivalent_formula_browser(browser, page_html, fast_code, slow_code)
+    step3 = {
+        "detail": reason,
+        "fast": {"program": pair["fast"]["code"], "determinize_status": fast_status, "run_status": obs_fast["run_status"]},
+        "slow": {"program": pair["slow"]["code"], "determinize_status": slow_status, "run_status": obs_slow["run_status"]},
+    }
+    if not is_equivalent:
+        return {"pair": pair, "equivalent": is_equivalent, "step": 3, "reason": step3}
+
+    # Step 1 の実行後の DOM を比較
+    is_equivalent, reason = equivalent_dom(obs_page_fast, obs_page_slow)
+    step4 = {
+        "detail": reason,
+        "fast": {"program": pair["fast"]["code"], "determinize_status": fast_status, "dom_sha256": obs_page_fast["dom_sha256"]},
+        "slow": {"program": pair["slow"]["code"], "determinize_status": slow_status, "dom_sha256": obs_page_slow["dom_sha256"]},
+    }
+    if not is_equivalent:
+        return {"pair": pair, "equivalent": is_equivalent, "step": 4, "reason": step4}
+
+    return {"pair": pair, "equivalent": is_equivalent, "step": None, "reason": None}
+
+
+# --- Main flow -----------------------------------------------------
+if __name__ == "__main__":
+    # --- 引数・パス解決 ---
+    parser = argparse.ArgumentParser(description="console 出力・変数の最終格納値・完了値・DOM の比較により不等価ペアを除外する (Playwright).")
+    parser.add_argument("--limit", type=int, default=0, help="先頭 N ペアだけ処理する (0 なら全件)")
+    parser.add_argument("--workers", type=int, default=4, help="ペア単位の並列ワーカー数")
+    args = parser.parse_args()
+
+    CONFIG = PathConfig()
+    INPUT_JSON = CONFIG.outputs / "jsperf" / "pair" / "time" / "Playwright" / "pair_programs.json"
+    OUTPUT_DIR = CONFIG.outputs / "jsperf" / "pair" / "equivalent" / "Playwright"
+
+    if not INPUT_JSON.exists():
+        raise SystemExit(f"input not found: {INPUT_JSON}")
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+    # --- pair_programs.json の読み込み ---
+    pairs: list[dict] = hayalab.read_json(INPUT_JSON)
+    if args.limit > 0:
+        pairs = pairs[: args.limit]
+    print(f"[equiv-pw] pairs: {len(pairs)}  workers: {args.workers}")
+
+    # --- ペア単位の並列処理 (決定化 → 検証) ---
+    results: list[dict] = []
+    with ProcessPoolExecutor(max_workers=args.workers) as executor:
+        for result in executor.map(_judge_pair, pairs, chunksize=CHUNK_SIZE):
+            results.append(result)
+
+    # --- 結果の書き出し ---
+    equivalent_pairs: list[dict] = []
+    not_equivalent_pairs: list[dict] = []
+    for result in results:
+        pair = result["pair"]
+        if result["equivalent"]:
+            equivalent_pairs.append(pair)
+            continue
+        not_equivalent_pairs.append(
+            {
+                "slug_id": pair["slug_id"],
+                "fast_test_idx": pair["fast"]["test_id"],
+                "slow_test_idx": pair["slow"]["test_id"],
+                "mean_ratio": pair["mean_ratio"],
+                "step": result["step"],
+                "reason": result["reason"],
+            }
+        )
+
+    hayalab.write_json(OUTPUT_DIR / "equivalent_pair.json", equivalent_pairs)
+    hayalab.write_json(OUTPUT_DIR / "not_equivalent_pair.json", not_equivalent_pairs)
+
+    # --- summary の書き出し ---
+    reason_counts: Counter[str] = Counter(f"step{r['step']}:{r['reason']['detail']}" for r in not_equivalent_pairs)
+    summary = {
+        "total_pairs": len(pairs),
+        "equivalent_pairs": len(equivalent_pairs),
+        "not_equivalent_pairs": len(not_equivalent_pairs),
+        "reason_breakdown": dict(sorted(reason_counts.items())),
+    }
+    hayalab.write_json(OUTPUT_DIR / "summary.json", summary)
+
+    print(f"[equiv-pw] equivalent: {summary['equivalent_pairs']} / not_equivalent: {summary['not_equivalent_pairs']}")
+    print(f"[equiv-pw] reason_breakdown: {summary['reason_breakdown']}")
+    print(f"[equiv-pw] outputs written to: {OUTPUT_DIR}")
